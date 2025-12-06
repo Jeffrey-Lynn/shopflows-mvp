@@ -5,18 +5,11 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/hooks/useAuth";
 
-interface Stats {
-  total_vehicles: number;
-  active_devices: number;
-  total_movements: number;
-  recent_movements_24h: number;
-}
-
-interface RecentMovement {
-  id: string;
-  vin_last_8: string;
-  location_name: string;
-  created_at: string;
+interface KPIs {
+  activeVehicles: number;
+  readyForPickup: number;
+  movementsToday: number;
+  avgCompletionTime: string;
 }
 
 const s = {
@@ -73,27 +66,42 @@ const s = {
     color: "#666666",
     marginBottom: "24px",
   },
-  statsGrid: {
+  kpiGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+    gridTemplateColumns: "repeat(2, 1fr)",
     gap: "16px",
     marginBottom: "32px",
   },
-  statCard: {
+  kpiCard: {
     backgroundColor: "#1a1a1a",
     borderRadius: "16px",
-    padding: "20px",
+    padding: "24px",
     border: "1px solid #2a2a2a",
+    cursor: "pointer",
+    transition: "all 0.2s ease",
+  } as React.CSSProperties,
+  kpiCardHighlight: {
+    borderColor: "rgba(234, 179, 8, 0.3)",
+    backgroundColor: "rgba(234, 179, 8, 0.05)",
   },
-  statValue: {
-    fontSize: "32px",
+  kpiValue: {
+    fontSize: "36px",
     fontWeight: 700,
     color: "#ffffff",
     marginBottom: "4px",
   },
-  statLabel: {
-    fontSize: "13px",
+  kpiValueHighlight: {
+    color: "#eab308",
+  },
+  kpiLabel: {
+    fontSize: "14px",
     color: "#666666",
+    marginBottom: "8px",
+  },
+  kpiHint: {
+    fontSize: "11px",
+    color: "#444444",
+    marginTop: "8px",
   },
   section: {
     backgroundColor: "#1a1a1a",
@@ -107,26 +115,6 @@ const s = {
     fontWeight: 600,
     color: "#ffffff",
     marginBottom: "16px",
-  },
-  activityItem: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: "12px 0",
-    borderBottom: "1px solid #2a2a2a",
-  },
-  activityVin: {
-    fontSize: "15px",
-    fontWeight: 600,
-    color: "#ffffff",
-  },
-  activityLocation: {
-    fontSize: "13px",
-    color: "#666666",
-  },
-  activityTime: {
-    fontSize: "12px",
-    color: "#666666",
   },
   quickLinks: {
     display: "grid",
@@ -167,11 +155,18 @@ const s = {
   },
 };
 
+function formatDuration(hours: number): string {
+  if (hours < 1) return "< 1 hour";
+  if (hours < 24) return `${Math.round(hours)} hours`;
+  const days = hours / 24;
+  if (days < 1.5) return "1 day";
+  return `${days.toFixed(1)} days`;
+}
+
 export default function AdminDashboard() {
   const router = useRouter();
   const { session, loading: authLoading, isAdmin, logout } = useAuth();
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [recentActivity, setRecentActivity] = useState<RecentMovement[]>([]);
+  const [kpis, setKpis] = useState<KPIs | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -181,70 +176,127 @@ export default function AdminDashboard() {
   }, [authLoading, session, isAdmin, router]);
 
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchKPIs = async () => {
       if (!session?.shopId) return;
 
       try {
-        // Simple count queries for stats
-        const [vehiclesRes, devicesRes, movementsRes] = await Promise.all([
-          supabase.from("vehicles").select("id", { count: "exact", head: true }).eq("shop_id", session.shopId),
-          supabase.from("devices").select("id", { count: "exact", head: true }).eq("shop_id", session.shopId),
-          supabase.from("vehicle_movements").select("id", { count: "exact", head: true }).eq("shop_id", session.shopId),
-        ]);
+        // Get all locations to find "Complete" and "Ready for Pickup" IDs
+        const { data: locations } = await supabase
+          .from("locations")
+          .select("id, name")
+          .eq("shop_id", session.shopId);
 
-        setStats({
-          total_vehicles: vehiclesRes.count || 0,
-          active_devices: devicesRes.count || 0,
-          total_movements: movementsRes.count || 0,
-          recent_movements_24h: 0, // Skip for MVP
-        });
+        const completeLocation = locations?.find(l => 
+          l.name.toLowerCase().includes("complete")
+        );
+        const readyLocation = locations?.find(l => 
+          l.name.toLowerCase().includes("ready") || l.name.toLowerCase().includes("pickup")
+        );
 
-        // Simple query for recent movements
-        const { data: movements } = await supabase
+        // Get all vehicles with their current locations
+        const { data: vehicles } = await supabase
+          .from("vehicles")
+          .select("id, current_location_id")
+          .eq("shop_id", session.shopId);
+
+        // Calculate active vehicles (not in Complete)
+        const activeVehicles = vehicles?.filter(v => 
+          !completeLocation || v.current_location_id !== completeLocation.id
+        ).length || 0;
+
+        // Calculate ready for pickup
+        const readyForPickup = readyLocation 
+          ? vehicles?.filter(v => v.current_location_id === readyLocation.id).length || 0
+          : 0;
+
+        // Get movements in last 24 hours
+        const yesterday = new Date();
+        yesterday.setHours(yesterday.getHours() - 24);
+        
+        const { count: movementsToday } = await supabase
           .from("vehicle_movements")
-          .select("id, vehicle_id, to_location_id, created_at")
+          .select("id", { count: "exact", head: true })
           .eq("shop_id", session.shopId)
-          .order("created_at", { ascending: false })
-          .limit(5);
+          .gte("created_at", yesterday.toISOString());
 
-        if (movements && movements.length > 0) {
-          // Get vehicle and location data separately
-          const vehicleIds = Array.from(new Set(movements.map(m => m.vehicle_id)));
-          const locationIds = Array.from(new Set(movements.map(m => m.to_location_id).filter(Boolean)));
+        // Calculate average completion time
+        // Get vehicles that have reached "Complete" status
+        let avgCompletionTime = "—";
+        if (completeLocation) {
+          const { data: completedMovements } = await supabase
+            .from("vehicle_movements")
+            .select("vehicle_id, created_at")
+            .eq("shop_id", session.shopId)
+            .eq("to_location_id", completeLocation.id)
+            .order("created_at", { ascending: false })
+            .limit(20);
 
-          const [vehiclesData, locationsData] = await Promise.all([
-            supabase.from("vehicles").select("id, vin_last_8").in("id", vehicleIds),
-            locationIds.length > 0 
-              ? supabase.from("locations").select("id, name").in("id", locationIds)
-              : Promise.resolve({ data: [] }),
-          ]);
+          if (completedMovements && completedMovements.length > 0) {
+            const vehicleIds = Array.from(new Set(completedMovements.map(m => m.vehicle_id)));
+            
+            // Get first movement for each completed vehicle
+            const { data: firstMovements } = await supabase
+              .from("vehicle_movements")
+              .select("vehicle_id, created_at")
+              .eq("shop_id", session.shopId)
+              .in("vehicle_id", vehicleIds)
+              .order("created_at", { ascending: true });
 
-          const vehicleMap = new Map((vehiclesData.data || []).map(v => [v.id, v.vin_last_8]));
-          const locationMap = new Map((locationsData.data || []).map(l => [l.id, l.name]));
+            if (firstMovements) {
+              const firstMoveMap = new Map<string, string>();
+              firstMovements.forEach(m => {
+                if (!firstMoveMap.has(m.vehicle_id)) {
+                  firstMoveMap.set(m.vehicle_id, m.created_at);
+                }
+              });
 
-          const formatted = movements.map(m => ({
-            id: m.id,
-            vin_last_8: vehicleMap.get(m.vehicle_id) || "Unknown",
-            location_name: locationMap.get(m.to_location_id) || "Unknown",
-            created_at: m.created_at,
-          }));
-          setRecentActivity(formatted);
+              let totalHours = 0;
+              let count = 0;
+              completedMovements.forEach(cm => {
+                const firstMove = firstMoveMap.get(cm.vehicle_id);
+                if (firstMove) {
+                  const start = new Date(firstMove).getTime();
+                  const end = new Date(cm.created_at).getTime();
+                  const hours = (end - start) / (1000 * 60 * 60);
+                  if (hours > 0) {
+                    totalHours += hours;
+                    count++;
+                  }
+                }
+              });
+
+              if (count > 0) {
+                avgCompletionTime = formatDuration(totalHours / count);
+              }
+            }
+          }
         }
+
+        setKpis({
+          activeVehicles,
+          readyForPickup,
+          movementsToday: movementsToday || 0,
+          avgCompletionTime,
+        });
       } catch (err) {
-        console.error("Error fetching dashboard data:", err);
+        console.error("Error fetching KPIs:", err);
       } finally {
         setLoading(false);
       }
     };
 
     if (session?.shopId) {
-      fetchData();
+      fetchKPIs();
     }
   }, [session?.shopId]);
 
   const handleLogout = () => {
     logout();
     router.replace("/admin/login");
+  };
+
+  const handleKpiClick = (path: string) => {
+    router.push(path);
   };
 
   if (authLoading || !session?.isAuthenticated) {
@@ -280,31 +332,124 @@ export default function AdminDashboard() {
       </p>
 
       {loading ? (
-        <div style={s.loading}>Loading stats...</div>
+        <div style={s.loading}>Loading KPIs...</div>
       ) : (
         <>
-          <div style={s.statsGrid}>
-            <div style={s.statCard}>
-              <div style={s.statValue}>{stats?.total_vehicles || 0}</div>
-              <div style={s.statLabel}>Total Vehicles</div>
+          {/* KPI Tiles */}
+          <div style={s.kpiGrid}>
+            {/* Active Vehicles */}
+            <div
+              style={s.kpiCard}
+              onClick={() => handleKpiClick("/admin/vehicles")}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "#3b82f6";
+                e.currentTarget.style.boxShadow = "0 0 30px rgba(59, 130, 246, 0.2)";
+                e.currentTarget.style.transform = "scale(1.02)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "#2a2a2a";
+                e.currentTarget.style.boxShadow = "none";
+                e.currentTarget.style.transform = "scale(1)";
+              }}
+            >
+              <div style={s.kpiValue}>{kpis?.activeVehicles || 0}</div>
+              <div style={s.kpiLabel}>Active Vehicles</div>
+              <div style={s.kpiHint}>Tap to view all vehicles →</div>
             </div>
-            <div style={s.statCard}>
-              <div style={s.statValue}>{stats?.active_devices || 0}</div>
-              <div style={s.statLabel}>Active Devices</div>
+
+            {/* Ready for Pickup - Highlighted */}
+            <div
+              style={{ ...s.kpiCard, ...s.kpiCardHighlight }}
+              onClick={() => handleKpiClick("/admin/vehicles?filter=ready")}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "#eab308";
+                e.currentTarget.style.boxShadow = "0 0 30px rgba(234, 179, 8, 0.3)";
+                e.currentTarget.style.transform = "scale(1.02)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "rgba(234, 179, 8, 0.3)";
+                e.currentTarget.style.boxShadow = "none";
+                e.currentTarget.style.transform = "scale(1)";
+              }}
+            >
+              <div style={{ ...s.kpiValue, ...s.kpiValueHighlight }}>
+                {kpis?.readyForPickup || 0}
+              </div>
+              <div style={s.kpiLabel}>Ready for Pickup</div>
+              <div style={s.kpiHint}>Customers waiting →</div>
             </div>
-            <div style={s.statCard}>
-              <div style={s.statValue}>{stats?.recent_movements_24h || 0}</div>
-              <div style={s.statLabel}>Movements (24h)</div>
+
+            {/* Movements Today */}
+            <div
+              style={s.kpiCard}
+              onClick={() => handleKpiClick("/admin/activity")}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "#3b82f6";
+                e.currentTarget.style.boxShadow = "0 0 30px rgba(59, 130, 246, 0.2)";
+                e.currentTarget.style.transform = "scale(1.02)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "#2a2a2a";
+                e.currentTarget.style.boxShadow = "none";
+                e.currentTarget.style.transform = "scale(1)";
+              }}
+            >
+              <div style={s.kpiValue}>{kpis?.movementsToday || 0}</div>
+              <div style={s.kpiLabel}>Movements Today</div>
+              <div style={s.kpiHint}>Tap to view activity →</div>
             </div>
-            <div style={s.statCard}>
-              <div style={s.statValue}>{stats?.total_movements || 0}</div>
-              <div style={s.statLabel}>Total Movements</div>
+
+            {/* Avg Completion Time */}
+            <div
+              style={s.kpiCard}
+              onClick={() => handleKpiClick("/admin/analytics")}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "#3b82f6";
+                e.currentTarget.style.boxShadow = "0 0 30px rgba(59, 130, 246, 0.2)";
+                e.currentTarget.style.transform = "scale(1.02)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "#2a2a2a";
+                e.currentTarget.style.boxShadow = "none";
+                e.currentTarget.style.transform = "scale(1)";
+              }}
+            >
+              <div style={s.kpiValue}>{kpis?.avgCompletionTime || "—"}</div>
+              <div style={s.kpiLabel}>Avg Completion Time</div>
+              <div style={s.kpiHint}>Tap to view trends →</div>
             </div>
           </div>
 
+          {/* Quick Actions */}
           <div style={s.section}>
             <h2 style={s.sectionTitle}>Quick Actions</h2>
             <div style={s.quickLinks}>
+              <a
+                href="/admin/vehicles"
+                style={s.quickLink}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = "#3b82f6";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = "#2a2a2a";
+                }}
+              >
+                <div style={s.quickLinkIcon}>🚗</div>
+                <span style={s.quickLinkText}>All Vehicles</span>
+              </a>
+              <a
+                href="/admin/activity"
+                style={s.quickLink}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = "#3b82f6";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = "#2a2a2a";
+                }}
+              >
+                <div style={s.quickLinkIcon}>📋</div>
+                <span style={s.quickLinkText}>Activity Log</span>
+              </a>
               <a
                 href="/admin/locations"
                 style={s.quickLink}
@@ -317,32 +462,6 @@ export default function AdminDashboard() {
               >
                 <div style={s.quickLinkIcon}>📍</div>
                 <span style={s.quickLinkText}>Manage Locations</span>
-              </a>
-              <a
-                href="/admin/devices"
-                style={s.quickLink}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = "#3b82f6";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = "#2a2a2a";
-                }}
-              >
-                <div style={s.quickLinkIcon}>📱</div>
-                <span style={s.quickLinkText}>Manage Devices</span>
-              </a>
-              <a
-                href="/dashboard"
-                style={s.quickLink}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = "#3b82f6";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = "#2a2a2a";
-                }}
-              >
-                <div style={s.quickLinkIcon}>🚗</div>
-                <span style={s.quickLinkText}>View Vehicles</span>
               </a>
               <a
                 href="/track"
@@ -358,38 +477,6 @@ export default function AdminDashboard() {
                 <span style={s.quickLinkText}>Track Vehicle</span>
               </a>
             </div>
-          </div>
-
-          <div style={s.section}>
-            <h2 style={s.sectionTitle}>Recent Activity</h2>
-            {recentActivity.length === 0 ? (
-              <p style={{ color: "#666666", fontSize: "14px" }}>
-                No recent activity. Start tracking vehicles to see updates here.
-              </p>
-            ) : (
-              recentActivity.map((activity, index) => (
-                <div
-                  key={activity.id}
-                  style={{
-                    ...s.activityItem,
-                    borderBottom:
-                      index === recentActivity.length - 1
-                        ? "none"
-                        : "1px solid #2a2a2a",
-                  }}
-                >
-                  <div>
-                    <div style={s.activityVin}>{activity.vin_last_8}</div>
-                    <div style={s.activityLocation}>
-                      Moved to {activity.location_name}
-                    </div>
-                  </div>
-                  <div style={s.activityTime}>
-                    {new Date(activity.created_at).toLocaleString()}
-                  </div>
-                </div>
-              ))
-            )}
           </div>
         </>
       )}
