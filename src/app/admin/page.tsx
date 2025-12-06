@@ -185,31 +185,48 @@ export default function AdminDashboard() {
       if (!session?.shopId) return;
 
       try {
-        // Fetch stats
-        const { data: statsData } = await supabase.rpc("get_shop_stats", {
-          p_shop_id: session.shopId,
-        });
-        if (statsData) setStats(statsData);
+        // Simple count queries for stats
+        const [vehiclesRes, devicesRes, movementsRes] = await Promise.all([
+          supabase.from("vehicles").select("id", { count: "exact", head: true }).eq("shop_id", session.shopId),
+          supabase.from("devices").select("id", { count: "exact", head: true }).eq("shop_id", session.shopId),
+          supabase.from("vehicle_movements").select("id", { count: "exact", head: true }).eq("shop_id", session.shopId),
+        ]);
 
-        // Fetch recent activity
+        setStats({
+          total_vehicles: vehiclesRes.count || 0,
+          active_devices: devicesRes.count || 0,
+          total_movements: movementsRes.count || 0,
+          recent_movements_24h: 0, // Skip for MVP
+        });
+
+        // Simple query for recent movements
         const { data: movements } = await supabase
           .from("vehicle_movements")
-          .select(`
-            id,
-            created_at,
-            vehicles!inner(vin_last_8),
-            locations!vehicle_movements_to_location_id_fkey(name)
-          `)
+          .select("id, vehicle_id, to_location_id, created_at")
           .eq("shop_id", session.shopId)
           .order("created_at", { ascending: false })
           .limit(5);
 
-        if (movements) {
-          const formatted = movements.map((m: Record<string, unknown>) => ({
-            id: m.id as string,
-            vin_last_8: (m.vehicles as Record<string, unknown>)?.vin_last_8 as string || "Unknown",
-            location_name: (m.locations as Record<string, unknown>)?.name as string || "Unknown",
-            created_at: m.created_at as string,
+        if (movements && movements.length > 0) {
+          // Get vehicle and location data separately
+          const vehicleIds = Array.from(new Set(movements.map(m => m.vehicle_id)));
+          const locationIds = Array.from(new Set(movements.map(m => m.to_location_id).filter(Boolean)));
+
+          const [vehiclesData, locationsData] = await Promise.all([
+            supabase.from("vehicles").select("id, vin_last_8").in("id", vehicleIds),
+            locationIds.length > 0 
+              ? supabase.from("locations").select("id, name").in("id", locationIds)
+              : Promise.resolve({ data: [] }),
+          ]);
+
+          const vehicleMap = new Map((vehiclesData.data || []).map(v => [v.id, v.vin_last_8]));
+          const locationMap = new Map((locationsData.data || []).map(l => [l.id, l.name]));
+
+          const formatted = movements.map(m => ({
+            id: m.id,
+            vin_last_8: vehicleMap.get(m.vehicle_id) || "Unknown",
+            location_name: locationMap.get(m.to_location_id) || "Unknown",
+            created_at: m.created_at,
           }));
           setRecentActivity(formatted);
         }
