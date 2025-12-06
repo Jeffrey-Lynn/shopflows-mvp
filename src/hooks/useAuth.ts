@@ -2,15 +2,23 @@
 
 import { useEffect, useState } from "react";
 
-const STORAGE_KEY = "shopflows_device_session";
+const STORAGE_KEY = "shopflows_session";
 
-type DeviceSession = {
+export type UserRole = "platform_admin" | "shop_admin" | "shop_user";
+
+export type Session = {
   isAuthenticated: boolean;
   shopId: string;
+  role: UserRole;
+  userId?: string;
+  deviceId?: string;
+  deviceName?: string;
+  email?: string;
+  name?: string;
 };
 
 export function useAuth() {
-  const [session, setSession] = useState<DeviceSession | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -18,7 +26,7 @@ export function useAuth() {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (raw) {
       try {
-        const parsed = JSON.parse(raw) as DeviceSession;
+        const parsed = JSON.parse(raw) as Session;
         setSession(parsed);
       } catch {
         window.localStorage.removeItem(STORAGE_KEY);
@@ -27,8 +35,56 @@ export function useAuth() {
     setLoading(false);
   }, []);
 
+  // Device login (PIN-based, for kiosks)
+  const loginDevice = (data: {
+    shopId: string;
+    deviceId: string;
+    deviceName: string;
+    userId: string;
+  }) => {
+    const next: Session = {
+      isAuthenticated: true,
+      shopId: data.shopId,
+      role: "shop_user",
+      userId: data.userId,
+      deviceId: data.deviceId,
+      deviceName: data.deviceName,
+    };
+    setSession(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    }
+  };
+
+  // Admin login (email/password)
+  const loginAdmin = (data: {
+    shopId: string;
+    userId: string;
+    email: string;
+    name: string;
+    role: UserRole;
+  }) => {
+    const next: Session = {
+      isAuthenticated: true,
+      shopId: data.shopId,
+      role: data.role,
+      userId: data.userId,
+      email: data.email,
+      name: data.name,
+    };
+    setSession(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    }
+  };
+
+  // Legacy login for backward compatibility
   const login = (shopId: string) => {
-    const next: DeviceSession = { isAuthenticated: true, shopId };
+    const next: Session = {
+      isAuthenticated: true,
+      shopId,
+      role: "shop_user",
+    };
     setSession(next);
     if (typeof window !== "undefined") {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
@@ -42,5 +98,17 @@ export function useAuth() {
     }
   };
 
-  return { session, loading, login, logout };
+  const isAdmin = session?.role === "shop_admin" || session?.role === "platform_admin";
+  const isPlatformAdmin = session?.role === "platform_admin";
+
+  return {
+    session,
+    loading,
+    login,
+    loginDevice,
+    loginAdmin,
+    logout,
+    isAdmin,
+    isPlatformAdmin,
+  };
 }

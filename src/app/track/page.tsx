@@ -261,27 +261,50 @@ export default function TrackPage() {
     router.replace("/login");
   };
 
+  const isAdmin = session?.role === "shop_admin" || session?.role === "platform_admin";
+
   return (
     <main style={s.page}>
       <header style={s.header}>
         <div style={s.headerLeft}>
-          <span style={s.logo}>SHOPFLOWS</span>
+          <span style={s.logo}>
+            {session?.deviceName ? `SHOPFLOWS • ${session.deviceName}` : "SHOPFLOWS"}
+          </span>
         </div>
-        <button
-          type="button"
-          style={s.navBtn}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = "#3b82f6";
-            e.currentTarget.style.color = "#ffffff";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = "#2a2a2a";
-            e.currentTarget.style.color = "#999999";
-          }}
-          onClick={() => router.push("/dashboard")}
-        >
-          Dashboard
-        </button>
+        <div style={{ display: "flex", gap: "8px" }}>
+          {isAdmin && (
+            <button
+              type="button"
+              style={s.navBtn}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "#3b82f6";
+                e.currentTarget.style.color = "#ffffff";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "#2a2a2a";
+                e.currentTarget.style.color = "#999999";
+              }}
+              onClick={() => router.push("/admin")}
+            >
+              Admin
+            </button>
+          )}
+          <button
+            type="button"
+            style={s.navBtn}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = "#3b82f6";
+              e.currentTarget.style.color = "#ffffff";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = "#2a2a2a";
+              e.currentTarget.style.color = "#999999";
+            }}
+            onClick={() => router.push("/dashboard")}
+          >
+            Dashboard
+          </button>
+        </div>
       </header>
 
       {offline && (

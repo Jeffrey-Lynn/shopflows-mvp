@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/hooks/useAuth";
 
 const PIN_LENGTH = 4;
@@ -92,15 +93,26 @@ const styles = {
     color: "#ffffff",
     transition: "all 0.15s ease",
   } as React.CSSProperties,
+  links: {
+    marginTop: "24px",
+    textAlign: "center" as const,
+    fontSize: "13px",
+  },
+  link: {
+    color: "#3b82f6",
+    textDecoration: "none",
+  },
 };
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login } = useAuth();
+  const { loginDevice } = useAuth();
   const [digits, setDigits] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [verifying, setVerifying] = useState(false);
 
   const handleDigit = (d: string) => {
+    if (verifying) return;
     setError(null);
     setDigits((prev) => {
       if (prev.length >= PIN_LENGTH) return prev;
@@ -113,24 +125,38 @@ export default function LoginPage() {
   };
 
   const handleBackspace = () => {
+    if (verifying) return;
     setError(null);
     setDigits((prev) => prev.slice(0, -1));
   };
 
   const verifyPin = async (pin: string) => {
-    const expected = process.env.NEXT_PUBLIC_DEVICE_PIN ?? process.env.DEVICE_PIN;
-    if (!expected) {
-      setError("PIN not configured");
+    setVerifying(true);
+    try {
+      const { data, error: rpcError } = await supabase.rpc("device_login", {
+        p_pin: pin,
+      });
+
+      if (rpcError) throw rpcError;
+
+      if (data?.success) {
+        loginDevice({
+          shopId: data.shop_id,
+          deviceId: data.device_id,
+          deviceName: data.device_name,
+          userId: data.user_id,
+        });
+        router.replace("/track");
+      } else {
+        setError(data?.error || "Invalid PIN");
+        setDigits([]);
+      }
+    } catch (err) {
+      console.error("Login error:", err);
+      setError("Login failed. Please try again.");
       setDigits([]);
-      return;
-    }
-    if (pin === expected) {
-      const shopId = process.env.NEXT_PUBLIC_SHOP_ID ?? "";
-      login(shopId);
-      router.replace("/track");
-    } else {
-      setError("Incorrect PIN");
-      setDigits([]);
+    } finally {
+      setVerifying(false);
     }
   };
 
@@ -141,8 +167,8 @@ export default function LoginPage() {
       <div style={styles.card}>
         <div style={styles.logo}>
           <p style={styles.logoText}>ShopFlows</p>
-          <h1 style={styles.title}>Enter PIN</h1>
-          <p style={styles.subtitle}>Unlock this device to continue</p>
+          <h1 style={styles.title}>Device Login</h1>
+          <p style={styles.subtitle}>Enter your 4-digit PIN</p>
         </div>
 
         <div style={styles.pinContainer}>
@@ -158,6 +184,9 @@ export default function LoginPage() {
         </div>
 
         {error && <p style={styles.error}>{error}</p>}
+        {verifying && (
+          <p style={{ ...styles.error, color: "#666666" }}>Verifying...</p>
+        )}
 
         <div style={styles.keypad}>
           {["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "⌫"].map(
@@ -170,11 +199,17 @@ export default function LoginPage() {
                 <button
                   key={index}
                   type="button"
-                  style={styles.key}
+                  disabled={verifying}
+                  style={{
+                    ...styles.key,
+                    opacity: verifying ? 0.5 : 1,
+                  }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = "#1a1a1a";
-                    e.currentTarget.style.borderColor = "#3b82f6";
-                    e.currentTarget.style.boxShadow = "0 0 20px rgba(59, 130, 246, 0.3)";
+                    if (!verifying) {
+                      e.currentTarget.style.backgroundColor = "#1a1a1a";
+                      e.currentTarget.style.borderColor = "#3b82f6";
+                      e.currentTarget.style.boxShadow = "0 0 20px rgba(59, 130, 246, 0.3)";
+                    }
                   }}
                   onMouseLeave={(e) => {
                     e.currentTarget.style.backgroundColor = "#0a0a0a";
@@ -190,6 +225,21 @@ export default function LoginPage() {
               );
             }
           )}
+        </div>
+
+        <div style={styles.links}>
+          <p style={{ color: "#666666", marginBottom: "8px" }}>
+            Shop owner?{" "}
+            <a href="/admin/login" style={styles.link}>
+              Admin Login
+            </a>
+          </p>
+          <p style={{ color: "#666666" }}>
+            New shop?{" "}
+            <a href="/signup" style={styles.link}>
+              Sign Up
+            </a>
+          </p>
         </div>
       </div>
     </main>

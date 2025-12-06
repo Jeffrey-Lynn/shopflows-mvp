@@ -6,16 +6,21 @@ import { useAuth } from "@/hooks/useAuth";
 
 export default function HomePage() {
   const router = useRouter();
-  const { session, loading } = useAuth();
+  const { session, loading, isAdmin } = useAuth();
 
   useEffect(() => {
     if (loading) return;
     if (session?.isAuthenticated) {
-      router.replace("/track");
+      // Admins go to admin panel, device users go to track
+      if (isAdmin) {
+        router.replace("/admin");
+      } else {
+        router.replace("/track");
+      }
     } else {
       router.replace("/login");
     }
-  }, [loading, session, router]);
+  }, [loading, session, isAdmin, router]);
 
   return null;
 }

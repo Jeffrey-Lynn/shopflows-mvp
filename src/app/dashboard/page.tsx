@@ -170,7 +170,7 @@ const s = {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { session, loading } = useAuth();
+  const { session, loading, logout } = useAuth();
   const [rows, setRows] = useState<VehicleRow[]>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -231,26 +231,66 @@ export default function DashboardPage() {
   }, [session?.shopId]);
 
   const now = new Date();
+  const isAdmin = session?.role === "shop_admin" || session?.role === "platform_admin";
+
+  const handleLogout = () => {
+    logout();
+    router.replace("/login");
+  };
 
   return (
     <main style={s.page}>
       <header style={s.header}>
-        <span style={s.logo}>SHOPFLOWS</span>
-        <button
-          type="button"
-          style={s.navBtn}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = "#3b82f6";
-            e.currentTarget.style.color = "#ffffff";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = "#2a2a2a";
-            e.currentTarget.style.color = "#999999";
-          }}
-          onClick={() => router.push("/track")}
-        >
-          + Track Vehicle
-        </button>
+        <span style={s.logo}>
+          {session?.deviceName ? `SHOPFLOWS • ${session.deviceName}` : "SHOPFLOWS"}
+        </span>
+        <div style={{ display: "flex", gap: "8px" }}>
+          {isAdmin && (
+            <button
+              type="button"
+              style={s.navBtn}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "#3b82f6";
+                e.currentTarget.style.color = "#ffffff";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "#2a2a2a";
+                e.currentTarget.style.color = "#999999";
+              }}
+              onClick={() => router.push("/admin")}
+            >
+              Admin
+            </button>
+          )}
+          <button
+            type="button"
+            style={s.navBtn}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = "#3b82f6";
+              e.currentTarget.style.color = "#ffffff";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = "#2a2a2a";
+              e.currentTarget.style.color = "#999999";
+            }}
+            onClick={() => router.push("/track")}
+          >
+            + Track
+          </button>
+          <button
+            type="button"
+            style={{ ...s.navBtn, color: "#ef4444", borderColor: "rgba(239, 68, 68, 0.3)" }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = "#ef4444";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = "rgba(239, 68, 68, 0.3)";
+            }}
+            onClick={handleLogout}
+          >
+            Logout
+          </button>
+        </div>
       </header>
 
       {error && <div style={s.error}>{error}</div>}
