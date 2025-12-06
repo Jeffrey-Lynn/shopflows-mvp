@@ -11,7 +11,7 @@ interface Movement {
   vin_last_8: string;
   from_location_name: string | null;
   to_location_name: string;
-  created_at: string;
+  moved_at: string;
 }
 
 const s = {
@@ -203,10 +203,10 @@ export default function ActivityPage() {
         // Fetch movements
         const { data: movs } = await supabase
           .from("vehicle_movements")
-          .select("id, vehicle_id, from_location_id, to_location_id, created_at")
+          .select("id, vehicle_id, from_location_id, to_location_id, moved_at")
           .eq("shop_id", session.shopId)
-          .gte("created_at", dateFilter.toISOString())
-          .order("created_at", { ascending: false })
+          .gte("moved_at", dateFilter.toISOString())
+          .order("moved_at", { ascending: false })
           .limit(limit);
 
         if (!movs || movs.length === 0) {
@@ -239,7 +239,7 @@ export default function ActivityPage() {
           vin_last_8: vehicleMap.get(m.vehicle_id) || "Unknown",
           from_location_name: m.from_location_id ? locationMap.get(m.from_location_id) || null : null,
           to_location_name: locationMap.get(m.to_location_id) || "Unknown",
-          created_at: m.created_at,
+          moved_at: m.moved_at,
         }));
 
         setMovements(mapped);
@@ -344,8 +344,8 @@ export default function ActivityPage() {
                   </div>
                 </div>
                 <div style={s.movementMeta}>
-                  <div style={s.movementTime}>{formatTime(movement.created_at)}</div>
-                  <div style={s.movementDate}>{formatDate(movement.created_at)}</div>
+                  <div style={s.movementTime}>{formatTime(movement.moved_at)}</div>
+                  <div style={s.movementDate}>{formatDate(movement.moved_at)}</div>
                 </div>
               </div>
             ))}

@@ -196,11 +196,11 @@ export default function AnalyticsPage() {
 
         const { data: completedMovements } = await supabase
           .from("vehicle_movements")
-          .select("vehicle_id, created_at")
+          .select("vehicle_id, moved_at")
           .eq("shop_id", session.shopId)
           .eq("to_location_id", completeLocation.id)
-          .gte("created_at", thirtyDaysAgo.toISOString())
-          .order("created_at", { ascending: false })
+          .gte("moved_at", thirtyDaysAgo.toISOString())
+          .order("moved_at", { ascending: false })
           .limit(50);
 
         if (!completedMovements || completedMovements.length === 0) {
@@ -216,10 +216,10 @@ export default function AnalyticsPage() {
           supabase.from("vehicles").select("id, vin_last_8").in("id", vehicleIds),
           supabase
             .from("vehicle_movements")
-            .select("vehicle_id, created_at")
+            .select("vehicle_id, moved_at")
             .eq("shop_id", session.shopId)
             .in("vehicle_id", vehicleIds)
-            .order("created_at", { ascending: true }),
+            .order("moved_at", { ascending: true }),
         ]);
 
         const vehicleMap = new Map((vehiclesRes.data || []).map(v => [v.id, v.vin_last_8]));
@@ -228,7 +228,7 @@ export default function AnalyticsPage() {
         const firstMoveMap = new Map<string, string>();
         (firstMovementsRes.data || []).forEach(m => {
           if (!firstMoveMap.has(m.vehicle_id)) {
-            firstMoveMap.set(m.vehicle_id, m.created_at);
+            firstMoveMap.set(m.vehicle_id, m.moved_at);
           }
         });
 
@@ -240,14 +240,14 @@ export default function AnalyticsPage() {
           const firstMove = firstMoveMap.get(cm.vehicle_id);
           if (firstMove) {
             const start = new Date(firstMove);
-            const end = new Date(cm.created_at);
+            const end = new Date(cm.moved_at);
             const hours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
             
             if (hours > 0) {
               completionData.push({
                 vin_last_8: vehicleMap.get(cm.vehicle_id) || "Unknown",
                 start_date: firstMove,
-                end_date: cm.created_at,
+                end_date: cm.moved_at,
                 duration_hours: hours,
               });
               durations.push(hours);

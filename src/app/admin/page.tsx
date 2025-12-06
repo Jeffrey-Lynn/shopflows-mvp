@@ -217,7 +217,7 @@ export default function AdminDashboard() {
           .from("vehicle_movements")
           .select("id", { count: "exact", head: true })
           .eq("shop_id", session.shopId)
-          .gte("created_at", yesterday.toISOString());
+          .gte("moved_at", yesterday.toISOString());
 
         // Debug: log if there's an error or unexpected result
         if (movError) {
@@ -231,10 +231,10 @@ export default function AdminDashboard() {
         if (completeLocation) {
           const { data: completedMovements } = await supabase
             .from("vehicle_movements")
-            .select("vehicle_id, created_at")
+            .select("vehicle_id, moved_at")
             .eq("shop_id", session.shopId)
             .eq("to_location_id", completeLocation.id)
-            .order("created_at", { ascending: false })
+            .order("moved_at", { ascending: false })
             .limit(20);
 
           if (completedMovements && completedMovements.length > 0) {
@@ -243,16 +243,16 @@ export default function AdminDashboard() {
             // Get first movement for each completed vehicle
             const { data: firstMovements } = await supabase
               .from("vehicle_movements")
-              .select("vehicle_id, created_at")
+              .select("vehicle_id, moved_at")
               .eq("shop_id", session.shopId)
               .in("vehicle_id", vehicleIds)
-              .order("created_at", { ascending: true });
+              .order("moved_at", { ascending: true });
 
             if (firstMovements) {
               const firstMoveMap = new Map<string, string>();
               firstMovements.forEach(m => {
                 if (!firstMoveMap.has(m.vehicle_id)) {
-                  firstMoveMap.set(m.vehicle_id, m.created_at);
+                  firstMoveMap.set(m.vehicle_id, m.moved_at);
                 }
               });
 
@@ -262,7 +262,7 @@ export default function AdminDashboard() {
                 const firstMove = firstMoveMap.get(cm.vehicle_id);
                 if (firstMove) {
                   const start = new Date(firstMove).getTime();
-                  const end = new Date(cm.created_at).getTime();
+                  const end = new Date(cm.moved_at).getTime();
                   const hours = (end - start) / (1000 * 60 * 60);
                   if (hours > 0) {
                     totalHours += hours;
