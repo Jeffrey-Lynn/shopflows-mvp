@@ -213,11 +213,17 @@ export default function AdminDashboard() {
         const yesterday = new Date();
         yesterday.setHours(yesterday.getHours() - 24);
         
-        const { count: movementsToday } = await supabase
+        const { count: movementsToday, error: movError } = await supabase
           .from("vehicle_movements")
           .select("id", { count: "exact", head: true })
           .eq("shop_id", session.shopId)
           .gte("created_at", yesterday.toISOString());
+
+        // Debug: log if there's an error or unexpected result
+        if (movError) {
+          console.error("Movements query error:", movError);
+        }
+        console.log("Movements today query:", { shopId: session.shopId, since: yesterday.toISOString(), count: movementsToday });
 
         // Calculate average completion time
         // Get vehicles that have reached "Complete" status

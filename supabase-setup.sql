@@ -59,6 +59,11 @@ ALTER TABLE locations ADD COLUMN IF NOT EXISTS sort_order INTEGER DEFAULT 0;
 -- Ensure vehicles has updated_at
 ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 
+-- Ensure vehicle_movements has shop_id (CRITICAL for multi-tenant queries)
+ALTER TABLE vehicle_movements ADD COLUMN IF NOT EXISTS shop_id UUID REFERENCES shops(id) ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS idx_vehicle_movements_shop_id ON vehicle_movements(shop_id);
+CREATE INDEX IF NOT EXISTS idx_vehicle_movements_created_at ON vehicle_movements(created_at);
+
 -- ============================================
 -- 4. ROW LEVEL SECURITY (RLS) POLICIES
 -- ============================================
