@@ -11,8 +11,8 @@ export const metadata: Metadata = {
     title: "ShopFlows",
   },
   icons: {
-    icon: "/icon-192.svg",
-    apple: "/apple-touch-icon.svg",
+    icon: "/icon-192.png",
+    apple: "/icon-192.png",
   },
 };
 
@@ -34,7 +34,7 @@ export default function RootLayout({
     <html lang="en">
       <head>
         <link rel="manifest" href="/manifest.json" />
-        <link rel="apple-touch-icon" href="/apple-touch-icon.svg" />
+        <link rel="apple-touch-icon" href="/icon-192.png" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="mobile-web-app-capable" content="yes" />
