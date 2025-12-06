@@ -10,6 +10,13 @@ interface Location {
   name: string;
 }
 
+interface Vehicle {
+  id: string;
+  vin_last_8: string;
+  current_location_id: string | null;
+  current_location_name: string;
+}
+
 const s = {
   page: {
     flex: 1,
@@ -153,17 +160,52 @@ const s = {
     cursor: "pointer",
     transition: "all 0.15s ease",
   } as React.CSSProperties,
+  modeToggle: {
+    display: "flex",
+    gap: "8px",
+    marginBottom: "16px",
+  },
+  modeBtn: {
+    flex: 1,
+    padding: "12px",
+    borderRadius: "10px",
+    fontSize: "13px",
+    fontWeight: 500,
+    border: "1px solid #2a2a2a",
+    backgroundColor: "#0a0a0a",
+    color: "#666666",
+    cursor: "pointer",
+    transition: "all 0.15s ease",
+  } as React.CSSProperties,
+  modeBtnActive: {
+    backgroundColor: "rgba(59, 130, 246, 0.15)",
+    borderColor: "#3b82f6",
+    color: "#3b82f6",
+  },
+  successMsg: {
+    fontSize: "14px",
+    color: "#22c55e",
+    padding: "12px 16px",
+    backgroundColor: "rgba(34, 197, 94, 0.1)",
+    borderRadius: "12px",
+    border: "1px solid rgba(34, 197, 94, 0.2)",
+    textAlign: "center" as const,
+  },
 };
 
 export default function TrackPage() {
   const router = useRouter();
   const { session, loading, logout } = useAuth();
+  const [mode, setMode] = useState<"new" | "existing">("new");
   const [vin, setVin] = useState("");
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string>("");
   const [fromLocationId, setFromLocationId] = useState<string | "">("");
   const [toLocationId, setToLocationId] = useState<string | "">("");
   const [locations, setLocations] = useState<Location[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [offline, setOffline] = useState(false);
 
   useEffect(() => {
@@ -173,63 +215,122 @@ export default function TrackPage() {
   }, [loading, session, router]);
 
   useEffect(() => {
-    const loadLocations = async () => {
+    const loadData = async () => {
       if (!session?.shopId) return;
       try {
-        const { data, error } = await supabase
+        // Load locations
+        const { data: locs, error: locError } = await supabase
           .from("locations")
           .select("id, name")
           .eq("shop_id", session.shopId)
           .order("sort_order", { ascending: true });
-        if (error) throw error;
-        setLocations(data ?? []);
+        if (locError) throw locError;
+        setLocations(locs ?? []);
+
+        // Find "Complete" location to filter out archived vehicles
+        const completeLocation = locs?.find(l => 
+          l.name.toLowerCase().includes("complete")
+        );
+
+        // Load active vehicles (not in Complete)
+        let vehicleQuery = supabase
+          .from("vehicles")
+          .select("id, vin_last_8, current_location_id")
+          .eq("shop_id", session.shopId)
+          .order("updated_at", { ascending: false });
+
+        if (completeLocation) {
+          vehicleQuery = vehicleQuery.neq("current_location_id", completeLocation.id);
+        }
+
+        const { data: vehs, error: vehError } = await vehicleQuery;
+        if (vehError) throw vehError;
+
+        // Map location names
+        const locationMap = new Map(locs?.map(l => [l.id, l.name]) || []);
+        const mappedVehicles: Vehicle[] = (vehs || []).map(v => ({
+          ...v,
+          current_location_name: locationMap.get(v.current_location_id) || "Unknown",
+        }));
+        setVehicles(mappedVehicles);
+
         setOffline(false);
       } catch (err) {
         console.error(err);
         setOffline(true);
       }
     };
-    void loadLocations();
+    void loadData();
   }, [session?.shopId]);
+
+  // Handle selecting an existing vehicle
+  const handleVehicleSelect = (vehicleId: string) => {
+    setSelectedVehicleId(vehicleId);
+    const vehicle = vehicles.find(v => v.id === vehicleId);
+    if (vehicle) {
+      setVin(vehicle.vin_last_8);
+      setFromLocationId(vehicle.current_location_id || "");
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!session?.shopId) return;
-    if (!vin || !toLocationId) {
-      setError("VIN and destination are required");
+    
+    const effectiveVin = mode === "existing" && selectedVehicleId 
+      ? vehicles.find(v => v.id === selectedVehicleId)?.vin_last_8 || vin
+      : vin;
+    
+    if (!effectiveVin || !toLocationId) {
+      setError("Vehicle and destination are required");
       return;
     }
     setSubmitting(true);
     setError(null);
+    setSuccess(null);
+    
     try {
-      const vinLast8 = vin.trim().slice(-8);
-
-      const { data: vehicle, error: vehicleError } = await supabase
-        .from("vehicles")
-        .select("id")
-        .eq("shop_id", session.shopId)
-        .eq("vin_last_8", vinLast8)
-        .maybeSingle();
-
-      if (vehicleError && vehicleError.code !== "PGRST116") {
-        throw vehicleError;
-      }
-
-      let vehicleId = vehicle?.id as string | undefined;
+      const vinLast8 = effectiveVin.trim().slice(-8);
+      let vehicleId = mode === "existing" ? selectedVehicleId : undefined;
 
       if (!vehicleId) {
-        const { data: newVehicle, error: insertError } = await supabase
+        // Check if vehicle exists
+        const { data: vehicle, error: vehicleError } = await supabase
           .from("vehicles")
-          .insert({
-            shop_id: session.shopId,
-            vin_last_8: vinLast8,
-            current_location_id: toLocationId || null,
-          })
-          .select("id")
-          .single();
-        if (insertError) throw insertError;
-        vehicleId = newVehicle.id;
+          .select("id, current_location_id")
+          .eq("shop_id", session.shopId)
+          .eq("vin_last_8", vinLast8)
+          .maybeSingle();
+
+        if (vehicleError && vehicleError.code !== "PGRST116") {
+          throw vehicleError;
+        }
+
+        vehicleId = vehicle?.id;
+
+        if (!vehicleId) {
+          // Create new vehicle
+          const { data: newVehicle, error: insertError } = await supabase
+            .from("vehicles")
+            .insert({
+              shop_id: session.shopId,
+              vin_last_8: vinLast8,
+              current_location_id: toLocationId || null,
+            })
+            .select("id")
+            .single();
+          if (insertError) throw insertError;
+          vehicleId = newVehicle.id;
+        } else {
+          // Update existing vehicle location
+          const { error: updateError } = await supabase
+            .from("vehicles")
+            .update({ current_location_id: toLocationId || null, updated_at: new Date().toISOString() })
+            .eq("id", vehicleId);
+          if (updateError) throw updateError;
+        }
       } else {
+        // Update selected vehicle location
         const { error: updateError } = await supabase
           .from("vehicles")
           .update({ current_location_id: toLocationId || null, updated_at: new Date().toISOString() })
@@ -237,17 +338,44 @@ export default function TrackPage() {
         if (updateError) throw updateError;
       }
 
+      // Record movement with device_id
       const { error: movementError } = await supabase.from("vehicle_movements").insert({
         shop_id: session.shopId,
         vehicle_id: vehicleId,
         from_location_id: fromLocationId || null,
         to_location_id: toLocationId || null,
+        device_id: session.deviceId || null,
       });
       if (movementError) throw movementError;
 
+      // Update local vehicles list
+      const locationName = locations.find(l => l.id === toLocationId)?.name || "Unknown";
+      setVehicles(prev => {
+        const updated = prev.map(v => 
+          v.id === vehicleId 
+            ? { ...v, current_location_id: toLocationId, current_location_name: locationName }
+            : v
+        );
+        // If new vehicle, add it
+        if (!prev.find(v => v.id === vehicleId)) {
+          updated.unshift({
+            id: vehicleId!,
+            vin_last_8: vinLast8,
+            current_location_id: toLocationId,
+            current_location_name: locationName,
+          });
+        }
+        return updated;
+      });
+
+      setSuccess(`${vinLast8} moved to ${locationName}`);
       setVin("");
+      setSelectedVehicleId("");
       setFromLocationId("");
       setToLocationId("");
+      
+      // Clear success after 3 seconds
+      setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
       console.error(err);
       setError("Failed to log movement. Check connection and try again.");
@@ -317,34 +445,91 @@ export default function TrackPage() {
         <h1 style={s.cardTitle}>Track Vehicle</h1>
         <p style={s.cardSubtitle}>Log vehicle movement between locations</p>
 
+        {/* Mode Toggle */}
+        <div style={s.modeToggle}>
+          <button
+            type="button"
+            style={mode === "new" ? { ...s.modeBtn, ...s.modeBtnActive } : s.modeBtn}
+            onClick={() => {
+              setMode("new");
+              setSelectedVehicleId("");
+              setFromLocationId("");
+            }}
+          >
+            New Vehicle
+          </button>
+          <button
+            type="button"
+            style={mode === "existing" ? { ...s.modeBtn, ...s.modeBtnActive } : s.modeBtn}
+            onClick={() => setMode("existing")}
+          >
+            Existing ({vehicles.length})
+          </button>
+        </div>
+
+        {success && <div style={s.successMsg}>{success}</div>}
+
         <form onSubmit={handleSubmit} style={s.form}>
-          <div style={s.fieldGroup}>
-            <label style={s.label}>VIN / Job # (last 8)</label>
-            <input
-              type="text"
-              inputMode="text"
-              autoFocus
-              value={vin}
-              onChange={(e) => setVin(e.target.value.toUpperCase())}
-              style={s.input}
-              placeholder="Enter VIN or job number"
-              onFocus={(e) => {
-                e.currentTarget.style.borderColor = "#3b82f6";
-                e.currentTarget.style.boxShadow = "0 0 20px rgba(59, 130, 246, 0.3)";
-              }}
-              onBlur={(e) => {
-                e.currentTarget.style.borderColor = "#2a2a2a";
-                e.currentTarget.style.boxShadow = "none";
-              }}
-            />
-          </div>
+          {mode === "existing" ? (
+            <div style={s.fieldGroup}>
+              <label style={s.label}>Select Vehicle</label>
+              <select
+                value={selectedVehicleId}
+                onChange={(e) => handleVehicleSelect(e.target.value)}
+                style={s.select}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = "#3b82f6";
+                  e.currentTarget.style.boxShadow = "0 0 20px rgba(59, 130, 246, 0.3)";
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = "#2a2a2a";
+                  e.currentTarget.style.boxShadow = "none";
+                }}
+              >
+                <option value="">Select a vehicle...</option>
+                {vehicles.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.vin_last_8} (Currently: {v.current_location_name})
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div style={s.fieldGroup}>
+              <label style={s.label}>VIN / Job # (last 8)</label>
+              <input
+                type="text"
+                inputMode="text"
+                autoFocus
+                value={vin}
+                onChange={(e) => setVin(e.target.value.toUpperCase())}
+                style={s.input}
+                placeholder="Enter VIN or job number"
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = "#3b82f6";
+                  e.currentTarget.style.boxShadow = "0 0 20px rgba(59, 130, 246, 0.3)";
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = "#2a2a2a";
+                  e.currentTarget.style.boxShadow = "none";
+                }}
+              />
+            </div>
+          )}
 
           <div style={s.fieldGroup}>
-            <label style={s.label}>From Location (optional)</label>
+            <label style={s.label}>
+              From Location {mode === "existing" && selectedVehicleId ? "(current)" : "(optional)"}
+            </label>
             <select
               value={fromLocationId}
               onChange={(e) => setFromLocationId(e.target.value)}
-              style={s.select}
+              disabled={mode === "existing" && !!selectedVehicleId}
+              style={{
+                ...s.select,
+                opacity: mode === "existing" && selectedVehicleId ? 0.6 : 1,
+                cursor: mode === "existing" && selectedVehicleId ? "not-allowed" : "pointer",
+              }}
               onFocus={(e) => {
                 e.currentTarget.style.borderColor = "#3b82f6";
                 e.currentTarget.style.boxShadow = "0 0 20px rgba(59, 130, 246, 0.3)";

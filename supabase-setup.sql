@@ -61,8 +61,10 @@ ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW
 
 -- Ensure vehicle_movements has shop_id (CRITICAL for multi-tenant queries)
 ALTER TABLE vehicle_movements ADD COLUMN IF NOT EXISTS shop_id UUID REFERENCES shops(id) ON DELETE CASCADE;
+ALTER TABLE vehicle_movements ADD COLUMN IF NOT EXISTS device_id UUID REFERENCES devices(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_vehicle_movements_shop_id ON vehicle_movements(shop_id);
-CREATE INDEX IF NOT EXISTS idx_vehicle_movements_created_at ON vehicle_movements(created_at);
+CREATE INDEX IF NOT EXISTS idx_vehicle_movements_moved_at ON vehicle_movements(moved_at);
+CREATE INDEX IF NOT EXISTS idx_vehicle_movements_device_id ON vehicle_movements(device_id);
 
 -- ============================================
 -- 4. ROW LEVEL SECURITY (RLS) POLICIES
