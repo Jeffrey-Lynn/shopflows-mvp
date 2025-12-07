@@ -228,16 +228,10 @@ export default function LoginPage() {
         </div>
 
         <div style={styles.links}>
-          <p style={{ color: "#666666", marginBottom: "8px" }}>
+          <p style={{ color: "#666666" }}>
             Shop owner?{" "}
             <a href="/admin/login" style={styles.link}>
               Admin Login
-            </a>
-          </p>
-          <p style={{ color: "#666666" }}>
-            New shop?{" "}
-            <a href="/signup" style={styles.link}>
-              Sign Up
             </a>
           </p>
         </div>
