@@ -134,13 +134,18 @@ export default function AdminLoginPage() {
 
       if (data?.success) {
         loginAdmin({
-          shopId: data.shop_id,
+          shopId: data.shop_id || "",
           userId: data.user_id,
           email: data.email,
           name: data.name || "",
           role: data.role as UserRole,
         });
-        router.push("/admin");
+        // Redirect platform admins to platform dashboard
+        if (data.role === "platform_admin") {
+          router.push("/platform");
+        } else {
+          router.push("/admin");
+        }
       } else {
         setError(data?.error || "Invalid email or password");
       }

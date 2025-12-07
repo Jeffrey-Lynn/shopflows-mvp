@@ -309,11 +309,18 @@ export default function AdminDashboard() {
     return <div style={s.loading}>Loading...</div>;
   }
 
+  const isPlatformAdmin = session?.role === "platform_admin";
+
   return (
     <main style={s.page}>
       <header style={s.header}>
         <span style={s.logo}>SHOPFLOWS ADMIN</span>
         <nav style={s.nav}>
+          {isPlatformAdmin && (
+            <a href="/platform" style={{ ...s.navBtn, color: "#ef4444", borderColor: "#ef4444" }}>
+              Platform
+            </a>
+          )}
           <a href="/admin" style={{ ...s.navBtn, ...s.navBtnActive }}>
             Dashboard
           </a>
@@ -322,6 +329,9 @@ export default function AdminDashboard() {
           </a>
           <a href="/admin/devices" style={s.navBtn}>
             Devices
+          </a>
+          <a href="/admin/invites" style={s.navBtn}>
+            Invites
           </a>
           <button
             onClick={handleLogout}

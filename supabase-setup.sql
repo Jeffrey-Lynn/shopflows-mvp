@@ -67,7 +67,31 @@ CREATE INDEX IF NOT EXISTS idx_vehicle_movements_moved_at ON vehicle_movements(m
 CREATE INDEX IF NOT EXISTS idx_vehicle_movements_device_id ON vehicle_movements(device_id);
 
 -- ============================================
--- 4. ROW LEVEL SECURITY (RLS) POLICIES
+-- 4. INVITE TOKENS TABLE
+-- ============================================
+CREATE TABLE IF NOT EXISTS invite_tokens (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  token TEXT UNIQUE NOT NULL,
+  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  shop_id UUID REFERENCES shops(id) ON DELETE SET NULL,
+  used_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_invite_tokens_token ON invite_tokens(token);
+CREATE INDEX IF NOT EXISTS idx_invite_tokens_created_by ON invite_tokens(created_by);
+
+-- ============================================
+-- 5. CREATE FIRST PLATFORM ADMIN
+-- ============================================
+-- Run this ONCE to create the platform admin user
+-- Change email and password_hash as needed
+-- Password hash should be generated using bcrypt
+-- INSERT INTO users (email, password_hash, role, name, shop_id)
+-- VALUES ('admin@getshopflows.com', '$2a$10$YOUR_BCRYPT_HASH_HERE', 'platform_admin', 'Platform Admin', NULL);
+
+-- ============================================
+-- 6. ROW LEVEL SECURITY (RLS) POLICIES
 -- ============================================
 
 -- Enable RLS on all tables

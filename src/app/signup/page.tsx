@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -112,10 +112,31 @@ const s = {
     fontSize: "14px",
     textAlign: "center" as const,
   },
+  inviteError: {
+    textAlign: "center" as const,
+    padding: "40px 20px",
+  },
+  inviteErrorTitle: {
+    fontSize: "20px",
+    fontWeight: 600,
+    color: "#ef4444",
+    marginBottom: "12px",
+  },
+  inviteErrorText: {
+    fontSize: "14px",
+    color: "#666666",
+    marginBottom: "20px",
+    lineHeight: 1.6,
+  },
+  inviteErrorLink: {
+    color: "#3b82f6",
+    textDecoration: "none",
+  },
 };
 
 export default function SignupPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { loginAdmin } = useAuth();
   const [shopName, setShopName] = useState("");
   const [ownerName, setOwnerName] = useState("");
@@ -124,10 +145,57 @@ export default function SignupPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Invite token state
+  const [inviteToken, setInviteToken] = useState<string | null>(null);
+  const [inviteValid, setInviteValid] = useState<boolean | null>(null);
+  const [checkingInvite, setCheckingInvite] = useState(true);
+
+  // Validate invite token on mount
+  useEffect(() => {
+    const validateInvite = async () => {
+      const token = searchParams.get("invite");
+      
+      if (!token) {
+        setInviteValid(false);
+        setCheckingInvite(false);
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from("invite_tokens")
+          .select("id, used_at")
+          .eq("token", token)
+          .maybeSingle();
+
+        if (error || !data) {
+          setInviteValid(false);
+        } else if (data.used_at) {
+          setInviteValid(false); // Already used
+        } else {
+          setInviteValid(true);
+          setInviteToken(token);
+        }
+      } catch (err) {
+        console.error("Error validating invite:", err);
+        setInviteValid(false);
+      } finally {
+        setCheckingInvite(false);
+      }
+    };
+
+    validateInvite();
+  }, [searchParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    if (!inviteToken) {
+      setError("Valid invite token required");
+      return;
+    }
 
     if (!shopName || !ownerName || !email || !password) {
       setError("All fields are required");
@@ -157,6 +225,15 @@ export default function SignupPage() {
       if (rpcError) throw rpcError;
 
       if (data?.success) {
+        // Mark invite token as used
+        await supabase
+          .from("invite_tokens")
+          .update({ 
+            used_at: new Date().toISOString(),
+            shop_id: data.shop_id,
+          })
+          .eq("token", inviteToken);
+
         // Log in the new admin
         loginAdmin({
           shopId: data.shop_id,
@@ -181,6 +258,40 @@ export default function SignupPage() {
       setLoading(false);
     }
   };
+
+  // Show loading while checking invite
+  if (checkingInvite) {
+    return (
+      <main style={s.page}>
+        <div style={s.card}>
+          <div style={{ textAlign: "center", color: "#666666", padding: "40px" }}>
+            Validating invite...
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // Show error if no valid invite
+  if (!inviteValid) {
+    return (
+      <main style={s.page}>
+        <div style={s.card}>
+          <div style={s.inviteError}>
+            <h2 style={s.inviteErrorTitle}>Invite Required</h2>
+            <p style={s.inviteErrorText}>
+              Signup requires a valid invite link.<br />
+              Contact <a href="mailto:support@getshopflows.com" style={s.inviteErrorLink}>support@getshopflows.com</a> to request access.
+            </p>
+            <p style={{ fontSize: "14px", color: "#666666" }}>
+              Already have an account?{" "}
+              <a href="/admin/login" style={s.inviteErrorLink}>Sign in</a>
+            </p>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main style={s.page}>
