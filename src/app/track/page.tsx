@@ -191,6 +191,83 @@ const s = {
     border: "1px solid rgba(34, 197, 94, 0.2)",
     textAlign: "center" as const,
   },
+  combobox: {
+    position: "relative" as const,
+  },
+  comboboxInput: {
+    width: "100%",
+    height: "56px",
+    borderRadius: "12px",
+    backgroundColor: "#0a0a0a",
+    border: "1px solid #2a2a2a",
+    padding: "0 16px",
+    fontSize: "15px",
+    color: "#ffffff",
+    outline: "none",
+    transition: "all 0.15s ease",
+  } as React.CSSProperties,
+  comboboxDropdown: {
+    position: "absolute" as const,
+    top: "100%",
+    left: 0,
+    right: 0,
+    marginTop: "4px",
+    backgroundColor: "#1a1a1a",
+    border: "1px solid #2a2a2a",
+    borderRadius: "12px",
+    maxHeight: "240px",
+    overflowY: "auto" as const,
+    zIndex: 100,
+    boxShadow: "0 10px 40px rgba(0, 0, 0, 0.5)",
+  },
+  comboboxItem: {
+    padding: "14px 16px",
+    fontSize: "14px",
+    color: "#ffffff",
+    cursor: "pointer",
+    borderBottom: "1px solid #2a2a2a",
+    transition: "background-color 0.1s ease",
+  } as React.CSSProperties,
+  comboboxItemLocation: {
+    fontSize: "12px",
+    color: "#666666",
+    marginTop: "2px",
+  },
+  comboboxEmpty: {
+    padding: "16px",
+    fontSize: "13px",
+    color: "#666666",
+    textAlign: "center" as const,
+  },
+  comboboxSelected: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    height: "56px",
+    borderRadius: "12px",
+    backgroundColor: "rgba(59, 130, 246, 0.1)",
+    border: "1px solid #3b82f6",
+    padding: "0 16px",
+    cursor: "pointer",
+  },
+  comboboxSelectedText: {
+    fontSize: "15px",
+    color: "#ffffff",
+    fontWeight: 500,
+  },
+  comboboxSelectedLocation: {
+    fontSize: "12px",
+    color: "#3b82f6",
+  },
+  comboboxClear: {
+    padding: "4px 8px",
+    borderRadius: "6px",
+    backgroundColor: "rgba(239, 68, 68, 0.15)",
+    border: "none",
+    color: "#ef4444",
+    fontSize: "12px",
+    cursor: "pointer",
+  } as React.CSSProperties,
 };
 
 export default function TrackPage() {
@@ -201,6 +278,10 @@ export default function TrackPage() {
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>("");
   const [fromLocationId, setFromLocationId] = useState<string | "">("");
   const [toLocationId, setToLocationId] = useState<string | "">("");
+  
+  // Searchable combobox state
+  const [vehicleSearch, setVehicleSearch] = useState("");
+  const [showVehicleDropdown, setShowVehicleDropdown] = useState(false);
   const [locations, setLocations] = useState<Location[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -473,26 +554,122 @@ export default function TrackPage() {
           {mode === "existing" ? (
             <div style={s.fieldGroup}>
               <label style={s.label}>Select Vehicle</label>
-              <select
-                value={selectedVehicleId}
-                onChange={(e) => handleVehicleSelect(e.target.value)}
-                style={s.select}
-                onFocus={(e) => {
-                  e.currentTarget.style.borderColor = "#3b82f6";
-                  e.currentTarget.style.boxShadow = "0 0 20px rgba(59, 130, 246, 0.3)";
-                }}
-                onBlur={(e) => {
-                  e.currentTarget.style.borderColor = "#2a2a2a";
-                  e.currentTarget.style.boxShadow = "none";
-                }}
-              >
-                <option value="">Select a vehicle...</option>
-                {vehicles.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.vin_last_8} (Currently: {v.current_location_name})
-                  </option>
-                ))}
-              </select>
+              <div style={s.combobox}>
+                {selectedVehicleId ? (
+                  // Show selected vehicle
+                  (() => {
+                    const selected = vehicles.find(v => v.id === selectedVehicleId);
+                    return (
+                      <div 
+                        style={s.comboboxSelected}
+                        onClick={() => {
+                          setSelectedVehicleId("");
+                          setVehicleSearch("");
+                          setFromLocationId("");
+                          setShowVehicleDropdown(true);
+                        }}
+                      >
+                        <div>
+                          <div style={s.comboboxSelectedText}>{selected?.vin_last_8}</div>
+                          <div style={s.comboboxSelectedLocation}>Currently: {selected?.current_location_name}</div>
+                        </div>
+                        <button
+                          type="button"
+                          style={s.comboboxClear}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedVehicleId("");
+                            setVehicleSearch("");
+                            setFromLocationId("");
+                          }}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    );
+                  })()
+                ) : (
+                  // Show search input
+                  <input
+                    type="text"
+                    value={vehicleSearch}
+                    onChange={(e) => {
+                      setVehicleSearch(e.target.value.toUpperCase());
+                      setShowVehicleDropdown(true);
+                    }}
+                    onFocus={() => setShowVehicleDropdown(true)}
+                    placeholder="Type VIN to search or click to browse..."
+                    style={{
+                      ...s.comboboxInput,
+                      borderColor: showVehicleDropdown ? "#3b82f6" : "#2a2a2a",
+                      boxShadow: showVehicleDropdown ? "0 0 20px rgba(59, 130, 246, 0.3)" : "none",
+                    }}
+                  />
+                )}
+                
+                {/* Dropdown */}
+                {showVehicleDropdown && !selectedVehicleId && (
+                  <div style={s.comboboxDropdown}>
+                    {(() => {
+                      const filtered = vehicles.filter(v => 
+                        v.vin_last_8.toLowerCase().includes(vehicleSearch.toLowerCase())
+                      );
+                      
+                      if (filtered.length === 0) {
+                        return (
+                          <div style={s.comboboxEmpty}>
+                            {vehicleSearch ? `No vehicles matching "${vehicleSearch}"` : "No active vehicles"}
+                          </div>
+                        );
+                      }
+                      
+                      return filtered.slice(0, 20).map((v, idx) => (
+                        <div
+                          key={v.id}
+                          style={{
+                            ...s.comboboxItem,
+                            borderBottom: idx === filtered.slice(0, 20).length - 1 ? "none" : "1px solid #2a2a2a",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = "rgba(59, 130, 246, 0.1)";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = "transparent";
+                          }}
+                          onClick={() => {
+                            handleVehicleSelect(v.id);
+                            setVehicleSearch("");
+                            setShowVehicleDropdown(false);
+                          }}
+                        >
+                          <div style={{ fontWeight: 500 }}>{v.vin_last_8}</div>
+                          <div style={s.comboboxItemLocation}>Currently: {v.current_location_name}</div>
+                        </div>
+                      ));
+                    })()}
+                    {vehicles.filter(v => v.vin_last_8.toLowerCase().includes(vehicleSearch.toLowerCase())).length > 20 && (
+                      <div style={s.comboboxEmpty}>
+                        Type to narrow results ({vehicles.filter(v => v.vin_last_8.toLowerCase().includes(vehicleSearch.toLowerCase())).length} total)
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              
+              {/* Click outside to close */}
+              {showVehicleDropdown && (
+                <div
+                  style={{
+                    position: "fixed",
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    zIndex: 99,
+                  }}
+                  onClick={() => setShowVehicleDropdown(false)}
+                />
+              )}
             </div>
           ) : (
             <div style={s.fieldGroup}>
