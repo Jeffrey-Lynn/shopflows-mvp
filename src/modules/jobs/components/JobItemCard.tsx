@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useTerminology } from '@/lib/terminology';
 
 /**
@@ -12,6 +13,8 @@ export interface JobItemCardProps {
   identifier: string;
   currentStageName: string | null;
   updatedAt: string | null;
+  /** If true, clicking the card navigates to job detail page */
+  clickable?: boolean;
 }
 
 const styles = {
@@ -85,18 +88,31 @@ function formatDuration(from: Date, to: Date): string {
   return `${diffDays}d ${diffHours % 24}h`;
 }
 
-export function JobItemCard({ id, identifier, currentStageName, updatedAt }: JobItemCardProps) {
+export function JobItemCard({ id, identifier, currentStageName, updatedAt, clickable = true }: JobItemCardProps) {
+  const router = useRouter();
   const terminology = useTerminology();
   const now = new Date();
   const updatedAtDate = updatedAt ? new Date(updatedAt) : null;
   const duration = updatedAtDate ? formatDuration(updatedAtDate, now) : '-';
 
+  const handleClick = () => {
+    if (clickable) {
+      router.push(`/jobs/${id}`);
+    }
+  };
+
   return (
     <article
-      style={styles.card}
+      style={{
+        ...styles.card,
+        cursor: clickable ? 'pointer' : 'default',
+      }}
+      onClick={handleClick}
       onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = '#3b82f6';
-        e.currentTarget.style.boxShadow = '0 0 25px rgba(59, 130, 246, 0.3)';
+        if (clickable) {
+          e.currentTarget.style.borderColor = '#3b82f6';
+          e.currentTarget.style.boxShadow = '0 0 25px rgba(59, 130, 246, 0.3)';
+        }
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.borderColor = '#2a2a2a';
