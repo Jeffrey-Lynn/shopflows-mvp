@@ -192,42 +192,39 @@ export default function DashboardPage() {
       setLoadingData(true);
       setError(null);
       try {
-        const shopId = session.shopId;
+        const orgId = session.shopId;
 
-        const [{ data: vehicles, error: vehiclesError }, { data: locations, error: locationsError }] =
-          await Promise.all([
-            supabase
-              .from("vehicles")
-              .select("id, vin_last_8, current_location_id, updated_at")
-              .eq("shop_id", shopId)
-              .order("updated_at", { ascending: false }),
-            supabase
-              .from("locations")
-              .select("id, name")
-              .eq("shop_id", shopId),
-          ] as const);
+        // Fetch vehicles (simplified query without JOIN for now)
+        const { data: vehicles, error: vehiclesError } = await supabase
+          .from("vehicles")
+          .select("id, vin, current_stage_id, updated_at")
+          .eq("org_id", orgId)
+          .order("updated_at", { ascending: false });
 
-        if (vehiclesError) throw vehiclesError;
-        if (locationsError) throw locationsError;
-
-        const locationMap = new Map<string, string>();
-        (locations ?? []).forEach((loc: { id: string; name: string }) => {
-          locationMap.set(loc.id, loc.name);
-        });
+        if (vehiclesError) {
+          console.error("Dashboard fetch error:", vehiclesError);
+          setError("Failed to load dashboard: " + vehiclesError.message);
+          return;
+        }
 
         // Map database vehicles to display-ready job items
-        const mapped: JobItemDisplay[] = (vehicles ?? []).map(
-          (v: { id: string; vin_last_8: string; current_location_id: string | null; updated_at: string }) => ({
-            id: v.id,
-            identifier: v.vin_last_8,
-            currentStageName: v.current_location_id ? locationMap.get(v.current_location_id) ?? null : null,
-            updatedAt: v.updated_at,
-          }),
-        );
+        type VehicleRow = {
+          id: string;
+          vin: string | null;
+          current_stage_id: string | null;
+          updated_at: string;
+        };
+
+        const mapped: JobItemDisplay[] = (vehicles ?? []).map((v: VehicleRow) => ({
+          id: v.id,
+          identifier: v.vin?.slice(-8) || "N/A",
+          currentStageName: "In Progress",  // TODO: Fetch stage names
+          updatedAt: v.updated_at,
+        }));
 
         setItems(mapped);
       } catch (err) {
-        console.error(err);
+        console.error("Dashboard error:", err);
         setError("Failed to load dashboard");
       } finally {
         setLoadingData(false);
