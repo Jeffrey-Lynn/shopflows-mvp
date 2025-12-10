@@ -4,12 +4,16 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/hooks/useAuth";
+import { JobItemCard } from "@/modules/jobs/components/JobItemCard";
+import { useTerminology } from "@/lib/terminology";
+import { FeatureGate } from "@/components/FeatureGate";
 
-interface VehicleRow {
+// Display-ready job item (mapped from database)
+interface JobItemDisplay {
   id: string;
-  vin_last_8: string;
-  current_location_name: string | null;
-  updated_at: string;
+  identifier: string;
+  currentStageName: string | null;
+  updatedAt: string;
 }
 
 function formatDuration(from: Date, to: Date) {
@@ -171,7 +175,8 @@ const s = {
 export default function DashboardPage() {
   const router = useRouter();
   const { session, loading, logout } = useAuth();
-  const [rows, setRows] = useState<VehicleRow[]>([]);
+  const terminology = useTerminology();
+  const [items, setItems] = useState<JobItemDisplay[]>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -210,16 +215,17 @@ export default function DashboardPage() {
           locationMap.set(loc.id, loc.name);
         });
 
-        const mapped: VehicleRow[] = (vehicles ?? []).map(
+        // Map database vehicles to display-ready job items
+        const mapped: JobItemDisplay[] = (vehicles ?? []).map(
           (v: { id: string; vin_last_8: string; current_location_id: string | null; updated_at: string }) => ({
             id: v.id,
-            vin_last_8: v.vin_last_8,
-            current_location_name: v.current_location_id ? locationMap.get(v.current_location_id) ?? null : null,
-            updated_at: v.updated_at,
+            identifier: v.vin_last_8,
+            currentStageName: v.current_location_id ? locationMap.get(v.current_location_id) ?? null : null,
+            updatedAt: v.updated_at,
           }),
         );
 
-        setRows(mapped);
+        setItems(mapped);
       } catch (err) {
         console.error(err);
         setError("Failed to load dashboard");
@@ -230,7 +236,6 @@ export default function DashboardPage() {
     void fetchData();
   }, [session?.shopId]);
 
-  const now = new Date();
   const isAdmin = session?.role === "shop_admin" || session?.role === "platform_admin";
 
   const handleLogout = () => {
@@ -298,62 +303,72 @@ export default function DashboardPage() {
       <section style={s.card}>
         <div style={s.cardHeader}>
           <div>
-            <h1 style={s.cardTitle}>Active Vehicles</h1>
-            <p style={s.cardSubtitle}>Current location and time in stage</p>
+            <h1 style={s.cardTitle}>Active {terminology.itemPlural}</h1>
+            <p style={s.cardSubtitle}>Current {terminology.stage.toLowerCase()} and time in {terminology.stage.toLowerCase()}</p>
           </div>
           <span style={s.badge}>
-            {loadingData ? "Loading..." : `${rows.length} vehicle${rows.length === 1 ? "" : "s"}`}
+            {loadingData ? "Loading..." : `${items.length} ${items.length === 1 ? terminology.item.toLowerCase() : terminology.itemPlural.toLowerCase()}`}
           </span>
         </div>
 
         <div style={s.list}>
           {loadingData ? (
             <div style={s.loadingState}>Syncing latest movements...</div>
-          ) : rows.length === 0 ? (
+          ) : items.length === 0 ? (
             <div style={s.emptyState}>
-              No vehicles yet. Track a vehicle to see it here.
+              No {terminology.itemPlural.toLowerCase()} yet. Track {terminology.item.toLowerCase() === "item" ? "an" : "a"} {terminology.item.toLowerCase()} to see it here.
             </div>
           ) : (
-            rows.map((row) => {
-              const updatedAt = row.updated_at ? new Date(row.updated_at) : null;
-              const duration = updatedAt ? formatDuration(updatedAt, now) : "-";
-              return (
-                <article
-                  key={row.id}
-                  style={s.vehicleCard}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = "#3b82f6";
-                    e.currentTarget.style.boxShadow = "0 0 25px rgba(59, 130, 246, 0.3)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = "#2a2a2a";
-                    e.currentTarget.style.boxShadow = "none";
-                  }}
-                >
-                  <div style={s.vehicleInfo}>
-                    <span style={s.vehicleLabel}>VIN / Job</span>
-                    <span style={s.vehicleVin}>{row.vin_last_8}</span>
-                    <span style={s.vehicleLocation}>
-                      Location:{" "}
-                      <span style={s.vehicleLocationValue}>
-                        {row.current_location_name ?? "Not set"}
-                      </span>
-                    </span>
-                  </div>
-                  <div style={s.vehicleRight}>
-                    <span style={s.timeBadge}>{duration} in stage</span>
-                    {updatedAt && (
-                      <span style={s.timeUpdated}>
-                        Updated {updatedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                      </span>
-                    )}
-                  </div>
-                </article>
-              );
-            })
+            items.map((item) => (
+              <JobItemCard
+                key={item.id}
+                id={item.id}
+                identifier={item.identifier}
+                currentStageName={item.currentStageName}
+                updatedAt={item.updatedAt}
+              />
+            ))
           )}
         </div>
       </section>
+
+      {/* Feature Gate Examples - Testing the feature flags system */}
+      <FeatureGate feature="labor_tracking">
+        <section style={{ ...s.card, flex: "none", padding: "16px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <span style={{ fontSize: "20px" }}>⏱️</span>
+            <div>
+              <h3 style={{ color: "#ffffff", fontSize: "14px", fontWeight: 600, margin: 0 }}>Labor Tracking</h3>
+              <p style={{ color: "#666666", fontSize: "12px", margin: 0 }}>Track worker hours and assignments (enabled by default)</p>
+            </div>
+          </div>
+        </section>
+      </FeatureGate>
+
+      <FeatureGate 
+        feature="inventory" 
+        fallback={
+          <section style={{ ...s.card, flex: "none", padding: "16px", borderColor: "#3b3b00" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+              <span style={{ fontSize: "20px" }}>📦</span>
+              <div>
+                <h3 style={{ color: "#fbbf24", fontSize: "14px", fontWeight: 600, margin: 0 }}>Inventory Module</h3>
+                <p style={{ color: "#666666", fontSize: "12px", margin: 0 }}>Upgrade to Professional plan to enable inventory tracking</p>
+              </div>
+            </div>
+          </section>
+        }
+      >
+        <section style={{ ...s.card, flex: "none", padding: "16px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <span style={{ fontSize: "20px" }}>📦</span>
+            <div>
+              <h3 style={{ color: "#ffffff", fontSize: "14px", fontWeight: 600, margin: 0 }}>Inventory Module</h3>
+              <p style={{ color: "#666666", fontSize: "12px", margin: 0 }}>Full inventory tracking is enabled</p>
+            </div>
+          </div>
+        </section>
+      </FeatureGate>
     </main>
   );
 }
