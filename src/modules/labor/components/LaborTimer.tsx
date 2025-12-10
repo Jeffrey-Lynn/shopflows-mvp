@@ -7,8 +7,10 @@ import {
   calculateCost,
   formatDuration,
   formatCost,
-  type ActiveTimer,
 } from '../types';
+import { useActiveTimer } from '../hooks/useActiveTimer';
+import { useStartTimer } from '../hooks/useStartTimer';
+import { useStopTimer } from '../hooks/useStopTimer';
 
 // =============================================================================
 // Types
@@ -21,6 +23,8 @@ export interface LaborTimerProps {
   workerId: string;
   /** Current user's display name */
   workerName: string;
+  /** Organization ID for creating entries */
+  orgId: string;
   /** Default hourly rate (org default or user rate) */
   defaultHourlyRate: number;
   /** Callback when timer starts */
@@ -199,35 +203,6 @@ const styles = {
 };
 
 // =============================================================================
-// Placeholder API Functions (TODO: Implement with Supabase)
-// =============================================================================
-
-async function fetchActiveTimer(jobId: string, workerId: string): Promise<ActiveTimer | null> {
-  // TODO: Fetch from Supabase
-  // SELECT * FROM labor_entries WHERE job_id = ? AND worker_id = ? AND end_time IS NULL
-  console.log('TODO: Fetch active timer for', { jobId, workerId });
-  return null;
-}
-
-async function startTimer(
-  orgId: string,
-  jobId: string,
-  workerId: string,
-  hourlyRate: number
-): Promise<string> {
-  // TODO: Insert into Supabase
-  // INSERT INTO labor_entries (org_id, job_id, worker_id, start_time, hourly_rate)
-  console.log('TODO: Start timer', { orgId, jobId, workerId, hourlyRate });
-  return crypto.randomUUID(); // Return fake ID for now
-}
-
-async function stopTimer(entryId: string, notes: string | null): Promise<void> {
-  // TODO: Update in Supabase
-  // UPDATE labor_entries SET end_time = NOW(), notes = ? WHERE id = ?
-  console.log('TODO: Stop timer', { entryId, notes });
-}
-
-// =============================================================================
 // Component
 // =============================================================================
 
@@ -235,37 +210,67 @@ export function LaborTimer({
   jobId,
   workerId,
   workerName,
+  orgId,
   defaultHourlyRate,
   onTimerStart,
   onTimerStop,
 }: LaborTimerProps) {
   const terminology = useTerminology();
   
-  // State
+  // Hooks for real data
+  const { 
+    timer: activeTimer, 
+    entry: activeEntry,
+    loading: timerLoading, 
+    error: timerError,
+    isRunning,
+    refresh: refreshTimer,
+  } = useActiveTimer(workerId, jobId);
+  
+  const { 
+    startTimer: startTimerAction, 
+    loading: startLoading, 
+    error: startError,
+    clearError: clearStartError,
+  } = useStartTimer();
+  
+  const { 
+    stopTimer: stopTimerAction, 
+    loading: stopLoading, 
+    error: stopError,
+    clearError: clearStopError,
+  } = useStopTimer();
+
+  // Local state
   const [timerState, setTimerState] = useState<TimerState>('idle');
-  const [activeTimer, setActiveTimer] = useState<ActiveTimer | null>(null);
   const [completedEntry, setCompletedEntry] = useState<CompletedEntry | null>(null);
   const [hourlyRate, setHourlyRate] = useState(defaultHourlyRate);
   const [notes, setNotes] = useState('');
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [loading, setLoading] = useState(false);
 
-  // Check for existing active timer on mount
+  // Combined loading state
+  const loading = timerLoading || startLoading || stopLoading;
+  
+  // Combined error state
+  const error = timerError || startError || stopError;
+
+  // Sync timer state with hook data
   useEffect(() => {
-    const checkActiveTimer = async () => {
-      const existing = await fetchActiveTimer(jobId, workerId);
-      if (existing) {
-        setActiveTimer(existing);
-        setTimerState('running');
-        setHourlyRate(existing.hourlyRate);
-      }
-    };
-    checkActiveTimer();
-  }, [jobId, workerId]);
+    if (timerLoading) return;
+    
+    if (isRunning && activeEntry) {
+      setTimerState('running');
+      setHourlyRate(activeEntry.hourlyRate);
+    } else if (timerState === 'running' && !isRunning) {
+      // Timer was stopped externally, stay in running state until we handle it
+    } else if (timerState !== 'stopped') {
+      setTimerState('idle');
+    }
+  }, [isRunning, activeEntry, timerLoading, timerState]);
 
   // Update elapsed time every second when running
   useEffect(() => {
-    if (timerState !== 'running' || !activeTimer) return;
+    if (!isRunning || !activeTimer) return;
 
     const interval = setInterval(() => {
       const hours = calculateDuration(activeTimer.startTime, null);
@@ -277,7 +282,7 @@ export function LaborTimer({
     setElapsedSeconds(Math.floor(hours * 3600));
 
     return () => clearInterval(interval);
-  }, [timerState, activeTimer]);
+  }, [isRunning, activeTimer]);
 
   // Format elapsed time as HH:MM:SS
   const formatElapsedTime = useCallback((seconds: number): string => {
@@ -290,31 +295,28 @@ export function LaborTimer({
   // Calculate current cost
   const currentCost = calculateCost(elapsedSeconds / 3600, hourlyRate);
 
+  // Clear errors on user action
+  const clearErrors = useCallback(() => {
+    clearStartError();
+    clearStopError();
+  }, [clearStartError, clearStopError]);
+
   // Handle start timer
   const handleStart = async () => {
-    setLoading(true);
-    try {
-      // TODO: Get orgId from context
-      const orgId = 'TODO_ORG_ID';
-      const entryId = await startTimer(orgId, jobId, workerId, hourlyRate);
-      
-      const newTimer: ActiveTimer = {
-        entryId,
-        jobId,
-        workerId,
-        startTime: new Date().toISOString(),
-        hourlyRate,
-        elapsedSeconds: 0,
-      };
-      
-      setActiveTimer(newTimer);
+    clearErrors();
+    
+    const entryId = await startTimerAction({
+      orgId,
+      jobId,
+      workerId,
+      hourlyRate,
+    });
+    
+    if (entryId) {
       setTimerState('running');
       setElapsedSeconds(0);
       onTimerStart?.(entryId);
-    } catch (err) {
-      console.error('Failed to start timer:', err);
-    } finally {
-      setLoading(false);
+      // Hook will auto-refresh via realtime subscription
     }
   };
 
@@ -322,10 +324,11 @@ export function LaborTimer({
   const handleStop = async () => {
     if (!activeTimer) return;
     
-    setLoading(true);
-    try {
-      await stopTimer(activeTimer.entryId, notes || null);
-      
+    clearErrors();
+    
+    const success = await stopTimerAction(activeTimer.entryId, notes || undefined);
+    
+    if (success) {
       const endTime = new Date().toISOString();
       const duration = calculateDuration(activeTimer.startTime, endTime);
       const cost = calculateCost(duration, hourlyRate);
@@ -339,12 +342,8 @@ export function LaborTimer({
       });
       
       setTimerState('stopped');
-      setActiveTimer(null);
       onTimerStop?.(activeTimer.entryId, duration, cost);
-    } catch (err) {
-      console.error('Failed to stop timer:', err);
-    } finally {
-      setLoading(false);
+      // Hook will auto-refresh via realtime subscription
     }
   };
 
@@ -367,7 +366,31 @@ export function LaborTimer({
         <span style={styles.workerBadge}>{workerName}</span>
       </div>
 
+      {/* Error Display */}
+      {error && (
+        <div style={{
+          backgroundColor: 'rgba(239, 68, 68, 0.1)',
+          border: '1px solid rgba(239, 68, 68, 0.3)',
+          borderRadius: '8px',
+          padding: '10px 14px',
+          marginBottom: '16px',
+          fontSize: '13px',
+          color: '#ef4444',
+        }}>
+          {error}
+        </div>
+      )}
+
+      {/* Loading State */}
+      {timerLoading && (
+        <div style={styles.timerDisplay}>
+          <p style={{ ...styles.timerTime, ...styles.timerTimeIdle }}>--:--:--</p>
+          <p style={{ fontSize: '12px', color: '#666666', marginTop: '8px' }}>Loading timer...</p>
+        </div>
+      )}
+
       {/* Timer Display */}
+      {!timerLoading && (
       <div style={styles.timerDisplay}>
         <p
           style={{
@@ -401,6 +424,7 @@ export function LaborTimer({
           </p>
         )}
       </div>
+      )}
 
       {/* Idle State - Show rate input and start button */}
       {timerState === 'idle' && (

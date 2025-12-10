@@ -1,6 +1,5 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import { useTerminology } from '@/lib/terminology';
 import {
   calculateDuration,
@@ -10,6 +9,7 @@ import {
   type LaborEntryDisplay,
   type JobLaborSummary,
 } from '../types';
+import { useLaborEntries } from '../hooks/useLaborEntries';
 
 // =============================================================================
 // Types
@@ -217,77 +217,8 @@ const styles = {
 };
 
 // =============================================================================
-// Placeholder API Functions (TODO: Implement with Supabase)
+// Helper Functions
 // =============================================================================
-
-async function fetchLaborEntries(jobId: string): Promise<LaborEntryDisplay[]> {
-  // TODO: Fetch from Supabase
-  // SELECT le.*, u.name as worker_name, v.vin_last_8 as job_identifier
-  // FROM labor_entries le
-  // JOIN users u ON le.worker_id = u.id
-  // JOIN vehicles v ON le.job_id = v.id
-  // WHERE le.job_id = ?
-  // ORDER BY le.start_time DESC
-  console.log('TODO: Fetch labor entries for job', jobId);
-
-  // Return mock data for UI development
-  const now = new Date();
-  const mockEntries: LaborEntryDisplay[] = [
-    {
-      id: '1',
-      orgId: 'org-1',
-      jobId,
-      workerId: 'worker-1',
-      startTime: new Date(now.getTime() - 30 * 60 * 1000).toISOString(), // 30 min ago
-      endTime: null, // Active timer
-      hourlyRate: 35,
-      notes: null,
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
-      workerName: 'Mike Johnson',
-      jobIdentifier: 'ABC1234',
-      durationHours: 0.5,
-      cost: 17.5,
-      isActive: true,
-    },
-    {
-      id: '2',
-      orgId: 'org-1',
-      jobId,
-      workerId: 'worker-2',
-      startTime: new Date(now.getTime() - 4 * 60 * 60 * 1000).toISOString(), // 4 hours ago
-      endTime: new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString(), // 2 hours ago
-      hourlyRate: 28,
-      notes: 'Completed front bumper repair and paint prep',
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
-      workerName: 'Sarah Chen',
-      jobIdentifier: 'ABC1234',
-      durationHours: 2,
-      cost: 56,
-      isActive: false,
-    },
-    {
-      id: '3',
-      orgId: 'org-1',
-      jobId,
-      workerId: 'worker-1',
-      startTime: new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString(), // Yesterday
-      endTime: new Date(now.getTime() - 22 * 60 * 60 * 1000).toISOString(),
-      hourlyRate: 35,
-      notes: 'Initial assessment and disassembly',
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
-      workerName: 'Mike Johnson',
-      jobIdentifier: 'ABC1234',
-      durationHours: 2,
-      cost: 70,
-      isActive: false,
-    },
-  ];
-
-  return mockEntries;
-}
 
 function calculateSummary(entries: LaborEntryDisplay[]): JobLaborSummary {
   const totalHours = entries.reduce((sum, e) => {
@@ -351,29 +282,10 @@ export function LaborEntryList({
 }: LaborEntryListProps) {
   const terminology = useTerminology();
   
-  const [entries, setEntries] = useState<LaborEntryDisplay[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // Use real hook for data fetching with realtime updates
+  const { entries, loading, error, refresh } = useLaborEntries(jobId);
 
-  // Fetch entries on mount
-  useEffect(() => {
-    const loadEntries = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const data = await fetchLaborEntries(jobId);
-        setEntries(data);
-      } catch (err) {
-        console.error('Failed to load labor entries:', err);
-        setError('Failed to load labor history');
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadEntries();
-  }, [jobId]);
-
-  // Calculate summary
+  // Calculate summary from entries
   const summary = entries.length > 0 ? calculateSummary(entries) : null;
 
   // =============================================================================
