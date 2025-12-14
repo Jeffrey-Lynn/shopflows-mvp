@@ -180,38 +180,28 @@ export default function DashboardPage() {
   const [loadingData, setLoadingData] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // TEMP: Commented out auth check for testing
-  // useEffect(() => {
-  //   if (!loading && !session?.isAuthenticated) {
-  //     router.replace("/login");
-  //   }
-  // }, [loading, session, router]);
+  useEffect(() => {
+    if (!loading && !session?.isAuthenticated) {
+      router.replace("/login");
+    }
+  }, [loading, session, router]);
 
   useEffect(() => {
     const fetchData = async () => {
-      console.log('=== DASHBOARD DEBUG ===');
-      
-      // TEMP: Hardcode org_id for testing (bypass session)
-      const orgId = '10000000-0000-0000-0000-000000000001';
-      console.log('Using hardcoded org_id:', orgId);
-      
+      const orgId = session?.orgId || session?.shopId;
+      if (!orgId) return;
+
       setLoadingData(true);
       setError(null);
-      
-      try {
-        console.log('Querying vehicles with org_id:', orgId);
 
+      try {
         const { data: vehicles, error: vehiclesError } = await supabase
           .from("vehicles")
           .select("id, vin, current_stage_id, updated_at")
           .eq("org_id", orgId)
           .order("updated_at", { ascending: false });
 
-        console.log('Query results:', { vehicles, error: vehiclesError });
-        console.log('Number of vehicles:', vehicles?.length);
-
         if (vehiclesError) {
-          console.error("Dashboard fetch error:", vehiclesError);
           setError("Failed to load dashboard: " + vehiclesError.message);
           return;
         }
@@ -240,7 +230,7 @@ export default function DashboardPage() {
       }
     };
     void fetchData();
-  }, []); // Removed session dependency
+  }, [session?.orgId, session?.shopId]);
 
   const isAdmin = session?.role === "shop_admin" || session?.role === "platform_admin";
 

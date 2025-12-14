@@ -141,10 +141,11 @@ export default function LoginPage() {
 
       if (data?.success) {
         loginDevice({
-          shopId: data.shop_id,
+          orgId: data.org_id || data.shop_id,
           deviceId: data.device_id,
           deviceName: data.device_name,
           userId: data.user_id,
+          name: data.name || data.full_name,
         });
         router.replace("/track");
       } else {

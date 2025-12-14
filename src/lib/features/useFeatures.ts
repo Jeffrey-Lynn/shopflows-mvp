@@ -6,13 +6,6 @@ import { useAuth } from '@/hooks/useAuth';
 import type { FeatureFlags, AvailableFeature } from './types';
 import { DEFAULT_FEATURES } from './types';
 
-const FORCED_FEATURES: FeatureFlags = {
-  labor_tracking: true,
-  inventory: true,
-  messaging: true,
-  invoicing: false,
-  ai_assistant: false,
-};
 
 interface UseFeaturesReturn {
   /** Current feature flags for the organization */
@@ -37,13 +30,14 @@ interface UseFeaturesReturn {
  */
 export function useFeatures(): UseFeaturesReturn {
   const { session } = useAuth();
-  const [features, setFeatures] = useState<FeatureFlags>(FORCED_FEATURES);
+  const [features, setFeatures] = useState<FeatureFlags>(DEFAULT_FEATURES);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchFeatures = useCallback(async () => {
-    if (!session?.shopId) {
-      setFeatures(FORCED_FEATURES);
+    const orgId = session?.orgId || session?.shopId;
+    if (!orgId) {
+      setFeatures(DEFAULT_FEATURES);
       setLoading(false);
       return;
     }
@@ -51,31 +45,31 @@ export function useFeatures(): UseFeaturesReturn {
     try {
       setError(null);
       
-      // Try to fetch features from organizations table
-      // Using shops table since that's what the app currently uses
+      // Fetch features from organizations table
       const { data, error: fetchError } = await supabase
-        .from('shops')
-        .select('id')
-        .eq('id', session.shopId)
+        .from('organizations')
+        .select('features')
+        .eq('id', orgId)
         .single();
 
       if (fetchError) {
         // If column doesn't exist or other error, use defaults
         console.warn('Could not fetch features, using defaults:', fetchError.message);
-        setFeatures(FORCED_FEATURES);
-      } else if (data) {
-        // For now, use defaults since column may not exist yet
-        // When migration is run, we can fetch: data.features
-        setFeatures(FORCED_FEATURES);
+        setFeatures(DEFAULT_FEATURES);
+      } else if (data?.features) {
+        // Merge with defaults to ensure all keys exist
+        setFeatures({ ...DEFAULT_FEATURES, ...data.features });
+      } else {
+        setFeatures(DEFAULT_FEATURES);
       }
     } catch (err) {
       console.error('Error fetching features:', err);
       setError('Failed to load features');
-      setFeatures(FORCED_FEATURES);
+      setFeatures(DEFAULT_FEATURES);
     } finally {
       setLoading(false);
     }
-  }, [session?.shopId]);
+  }, [session?.orgId, session?.shopId]);
 
   useEffect(() => {
     fetchFeatures();
@@ -90,17 +84,17 @@ export function useFeatures(): UseFeaturesReturn {
 
   const updateFeature = useCallback(
     async (feature: AvailableFeature, enabled: boolean): Promise<boolean> => {
-      if (!session?.shopId) return false;
+      const orgId = session?.orgId || session?.shopId;
+      if (!orgId) return false;
 
       try {
         const updatedFeatures = { ...features, [feature]: enabled };
 
         // Update in database
-        // Note: This will fail until migration is run - that's expected
         const { error: updateError } = await supabase
-          .from('shops')
+          .from('organizations')
           .update({ features: updatedFeatures })
-          .eq('id', session.shopId);
+          .eq('id', orgId);
 
         if (updateError) {
           console.error('Failed to update feature:', updateError.message);
@@ -115,7 +109,7 @@ export function useFeatures(): UseFeaturesReturn {
         return false;
       }
     },
-    [session?.shopId, features]
+    [session?.orgId, session?.shopId, features]
   );
 
   const enableFeature = useCallback(

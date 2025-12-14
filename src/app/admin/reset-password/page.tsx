@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
-import { useAuth, UserRole } from "@/hooks/useAuth";
 
 const s = {
   page: {
@@ -92,6 +91,14 @@ const s = {
     color: "#ef4444",
     fontSize: "14px",
   },
+  success: {
+    padding: "12px 16px",
+    backgroundColor: "rgba(34, 197, 94, 0.1)",
+    border: "1px solid rgba(34, 197, 94, 0.2)",
+    borderRadius: "12px",
+    color: "#22c55e",
+    fontSize: "14px",
+  },
   link: {
     textAlign: "center" as const,
     marginTop: "16px",
@@ -105,61 +112,54 @@ const s = {
   },
 };
 
-export default function AdminLoginPage() {
+export default function ResetPasswordPage() {
   const router = useRouter();
-  const { loginAdmin } = useAuth();
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSuccess(false);
 
-    if (!email || !password) {
-      setError("Email and password are required");
+    if (!email.trim()) {
+      setError("Email is required");
+      return;
+    }
+
+    if (!newPassword.trim()) {
+      setError("New password is required");
+      return;
+    }
+
+    if (newPassword.length < 4) {
+      setError("Password must be at least 4 characters");
       return;
     }
 
     setLoading(true);
 
     try {
-      const { data, error: rpcError } = await supabase.rpc("admin_login", {
-        p_email: email,
-        p_password: password,
+      const { data, error: rpcError } = await supabase.rpc("reset_password", {
+        p_email: email.trim(),
+        p_new_password: newPassword,
       });
-
-      console.log("admin_login RPC response:", JSON.stringify({ data, rpcError }, null, 2));
 
       if (rpcError) throw rpcError;
 
-      // Handle array response from RPC (returns [{ success: true, ... }])
-      const result = (Array.isArray(data) && data.length > 0) ? data[0] as Record<string, unknown> : data as Record<string, unknown>;
-      const success = result?.success === true;
-
-      console.log("Parsed result:", JSON.stringify({ result, success }, null, 2));
-
-      if (success) {
-        loginAdmin({
-          orgId: (result.org_id || result.shop_id || "") as string,
-          userId: result.user_id as string,
-          email: result.email as string,
-          name: (result.name || result.full_name || "") as string,
-          role: result.role as UserRole,
-        });
-        // Redirect platform admins to platform dashboard
-        if (result.role === "platform_admin") {
-          router.push("/platform");
-        } else {
-          router.push("/admin");
-        }
+      if (data) {
+        setSuccess(true);
+        setEmail("");
+        setNewPassword("");
       } else {
-        setError((result?.error as string) || "Invalid email or password");
+        setError("User not found with that email");
       }
     } catch (err) {
-      console.error(err);
-      setError("Login failed. Please try again.");
+      console.error("Reset password error:", err);
+      setError("Failed to reset password. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -169,78 +169,87 @@ export default function AdminLoginPage() {
     <main style={s.page}>
       <div style={s.card}>
         <div style={s.logo}>
-          <p style={s.logoText}>ShopFlows</p>
-          <h1 style={s.title}>Admin Login</h1>
-          <p style={s.subtitle}>Sign in to manage your shop</p>
+          <span style={s.logoText}>ShopFlows</span>
+          <h1 style={s.title}>Reset Password</h1>
+          <p style={s.subtitle}>Admin password reset tool</p>
         </div>
 
-        <form onSubmit={handleSubmit} style={s.form}>
+        <form style={s.form} onSubmit={handleSubmit}>
+          {error && <div style={s.error}>{error}</div>}
+          {success && (
+            <div style={s.success}>
+              Password reset successfully! User can now log in with the new password.
+            </div>
+          )}
+
           <div style={s.fieldGroup}>
             <label style={s.label}>Email</label>
             <input
               type="email"
+              style={s.input}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              style={s.input}
-              autoFocus
+              placeholder="user@example.com"
               onFocus={(e) => {
                 e.currentTarget.style.borderColor = "#3b82f6";
-                e.currentTarget.style.boxShadow = "0 0 20px rgba(59, 130, 246, 0.2)";
               }}
               onBlur={(e) => {
                 e.currentTarget.style.borderColor = "#2a2a2a";
-                e.currentTarget.style.boxShadow = "none";
               }}
             />
           </div>
 
           <div style={s.fieldGroup}>
-            <label style={s.label}>Password</label>
+            <label style={s.label}>New Password</label>
             <input
               type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
               style={s.input}
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="Enter new password"
               onFocus={(e) => {
                 e.currentTarget.style.borderColor = "#3b82f6";
-                e.currentTarget.style.boxShadow = "0 0 20px rgba(59, 130, 246, 0.2)";
               }}
               onBlur={(e) => {
                 e.currentTarget.style.borderColor = "#2a2a2a";
-                e.currentTarget.style.boxShadow = "none";
               }}
             />
           </div>
 
-          {error && <div style={s.error}>{error}</div>}
-
           <button
             type="submit"
-            disabled={loading}
             style={{
               ...s.button,
-              opacity: loading ? 0.6 : 1,
+              opacity: loading ? 0.7 : 1,
               cursor: loading ? "not-allowed" : "pointer",
             }}
+            disabled={loading}
+            onMouseEnter={(e) => {
+              if (!loading) e.currentTarget.style.backgroundColor = "#2563eb";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = "#3b82f6";
+            }}
           >
-            {loading ? "Signing in..." : "Sign In"}
+            {loading ? "Resetting..." : "Reset Password"}
           </button>
         </form>
 
-        <p style={s.link}>
-          Don&apos;t have an account?
-          <a href="/signup" style={s.linkAnchor}>
-            Create shop
-          </a>
-        </p>
-
-        <p style={{ ...s.link, marginTop: "8px" }}>
-          <a href="/login" style={s.linkAnchor}>
-            Device/Kiosk Login
-          </a>
-        </p>
+        <div style={s.link}>
+          <span
+            style={s.linkAnchor}
+            onClick={() => router.push("/admin/login")}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.textDecoration = "underline";
+              e.currentTarget.style.cursor = "pointer";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.textDecoration = "none";
+            }}
+          >
+            Back to Admin Login
+          </span>
+        </div>
       </div>
     </main>
   );

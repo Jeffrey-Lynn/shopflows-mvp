@@ -8,6 +8,9 @@ export type UserRole = "platform_admin" | "shop_admin" | "shop_user";
 
 export type Session = {
   isAuthenticated: boolean;
+  /** Organization ID (primary identifier) */
+  orgId: string;
+  /** @deprecated Use orgId instead. Kept for backward compatibility. */
   shopId: string;
   role: UserRole;
   userId?: string;
@@ -37,18 +40,23 @@ export function useAuth() {
 
   // Device login (PIN-based, for kiosks)
   const loginDevice = (data: {
-    shopId: string;
+    orgId?: string;
+    shopId?: string;  // @deprecated - use orgId
     deviceId: string;
     deviceName: string;
     userId: string;
+    name?: string;
   }) => {
+    const orgId = data.orgId || data.shopId || '';
     const next: Session = {
       isAuthenticated: true,
-      shopId: data.shopId,
+      orgId,
+      shopId: orgId,  // backward compat
       role: "shop_user",
       userId: data.userId,
       deviceId: data.deviceId,
       deviceName: data.deviceName,
+      name: data.name,
     };
     setSession(next);
     if (typeof window !== "undefined") {
@@ -58,15 +66,18 @@ export function useAuth() {
 
   // Admin login (email/password)
   const loginAdmin = (data: {
-    shopId: string;
+    orgId?: string;
+    shopId?: string;  // @deprecated - use orgId
     userId: string;
     email: string;
     name: string;
     role: UserRole;
   }) => {
+    const orgId = data.orgId || data.shopId || '';
     const next: Session = {
       isAuthenticated: true,
-      shopId: data.shopId,
+      orgId,
+      shopId: orgId,  // backward compat
       role: data.role,
       userId: data.userId,
       email: data.email,
@@ -79,10 +90,11 @@ export function useAuth() {
   };
 
   // Legacy login for backward compatibility
-  const login = (shopId: string) => {
+  const login = (orgIdOrShopId: string) => {
     const next: Session = {
       isAuthenticated: true,
-      shopId,
+      orgId: orgIdOrShopId,
+      shopId: orgIdOrShopId,  // backward compat
       role: "shop_user",
     };
     setSession(next);

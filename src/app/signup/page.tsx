@@ -226,17 +226,18 @@ export default function SignupPage() {
 
       if (data?.success) {
         // Mark invite token as used
+        const orgId = data.org_id || data.shop_id;
         await supabase
           .from("invite_tokens")
           .update({ 
             used_at: new Date().toISOString(),
-            shop_id: data.shop_id,
+            org_id: orgId,
           })
           .eq("token", inviteToken);
 
         // Log in the new admin
         loginAdmin({
-          shopId: data.shop_id,
+          orgId: orgId,
           userId: data.user_id,
           email: email,
           name: ownerName,

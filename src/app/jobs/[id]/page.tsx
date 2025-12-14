@@ -204,30 +204,23 @@ export default function JobDetailPage() {
     refreshMaterialsRef.current = refresh;
   }, []);
 
-  // TEMP: Commented out auth check for testing
-  // useEffect(() => {
-  //   if (!authLoading && !session?.isAuthenticated) {
-  //     router.replace('/login');
-  //   }
-  // }, [authLoading, session, router]);
+  useEffect(() => {
+    if (!authLoading && !session?.isAuthenticated) {
+      router.replace('/login');
+    }
+  }, [authLoading, session, router]);
 
   // Fetch job data
   useEffect(() => {
     const fetchJob = async () => {
-      // TEMP: Hardcode org_id for testing
-      const testOrgId = '10000000-0000-0000-0000-000000000001';
-      console.log('=== JOB DETAIL DEBUG ===');
-      console.log('jobId:', jobId);
-      console.log('Using hardcoded org_id:', testOrgId);
-      
-      if (!jobId) return;
+      const orgId = session?.orgId || session?.shopId;
+      if (!jobId || !orgId) return;
       
       setLoading(true);
       setError(null);
       
       try {
         // Fetch job (updated for new schema)
-        console.log('Querying vehicle with id:', jobId);
         const { data: jobData, error: jobError } = await supabase
           .from('vehicles')
           .select(`
@@ -238,10 +231,8 @@ export default function JobDetailPage() {
             updated_at
           `)
           .eq('id', jobId)
-          .eq('org_id', testOrgId)
+          .eq('org_id', orgId)
           .single();
-        
-        console.log('Query result:', { jobData, jobError });
 
         if (jobError) {
           if (jobError.code === 'PGRST116') {
@@ -261,7 +252,6 @@ export default function JobDetailPage() {
           created_at: jobData.created_at,
           updated_at: jobData.updated_at,
         });
-        console.log('Job loaded successfully');
       } catch (err) {
         console.error('Failed to fetch job:', err);
         setError('Failed to load job details');
@@ -271,10 +261,10 @@ export default function JobDetailPage() {
     };
 
     fetchJob();
-  }, [jobId, terminology.item]); // Removed session dependency
+  }, [jobId, terminology.item, session?.orgId, session?.shopId]);
 
-  // Loading state (removed authLoading check for testing)
-  if (loading) {
+  // Loading state
+  if (authLoading || loading) {
     return (
       <div style={styles.page}>
         <div style={styles.container}>
@@ -305,16 +295,10 @@ export default function JobDetailPage() {
     );
   }
 
-  // TEMP: Hardcoded worker info for testing
-  const workerId = '849ffe5e-dd64-41a2-96be-bada46ff5bc7';
-  const workerName = 'Jeff Lynn';
-  const orgId = '10000000-0000-0000-0000-000000000001';
-  
-  console.log('=== LABOR TIMER PROPS ===');
-  console.log('jobId:', jobId);
-  console.log('workerId:', workerId);
-  console.log('workerName:', workerName);
-  console.log('orgId:', orgId);
+  // Get worker info from session
+  const workerId = session?.userId || '';
+  const workerName = session?.name || 'Unknown';
+  const orgId = session?.orgId || session?.shopId || '';
 
   return (
     <div style={styles.page}>
@@ -366,63 +350,47 @@ export default function JobDetailPage() {
           </div>
         </div>
 
-        {/* Labor Tracking Section - Feature Gated */}
-        {/* Materials Section - Primary action for adding materials */}
-        <FeatureGate
-          feature="inventory"
-          fallback={
-            <div style={styles.card}>
-              <h2 style={styles.cardTitle}>Materials</h2>
-              <p style={{ color: '#666666', fontSize: '14px', margin: 0 }}>
-                Inventory tracking is not enabled for your organization. 
-                Contact your administrator to enable this feature.
-              </p>
-            </div>
-          }
-        >
-          <div style={styles.section}>
-            <h2 style={styles.sectionTitle}>Materials</h2>
-            <div style={styles.laborGrid}>
-              {/* Add Materials */}
+        {/* Actions Section - Side by side: Add Materials | Start/Stop Timer */}
+        <div style={styles.section}>
+          <h2 style={styles.sectionTitle}>Actions</h2>
+          <div style={styles.laborGrid}>
+            {/* Add Materials */}
+            <FeatureGate
+              feature="inventory"
+              fallback={
+                <div style={styles.card}>
+                  <h3 style={{ color: '#ffffff', fontSize: '16px', fontWeight: 600, margin: '0 0 8px 0' }}>Add Materials</h3>
+                  <p style={{ color: '#666666', fontSize: '14px', margin: 0 }}>
+                    Inventory tracking is not enabled.
+                  </p>
+                </div>
+              }
+            >
               <MaterialUsageTracker
                 jobId={jobId}
                 orgId={orgId}
                 userId={workerId}
                 onMaterialAdded={async (material) => {
                   console.log('Material added:', material);
-                  // Refresh the materials list
                   if (refreshMaterialsRef.current) {
                     await refreshMaterialsRef.current();
                   }
                 }}
               />
+            </FeatureGate>
 
-              {/* Materials Used */}
-              <JobMaterialsList 
-                jobId={jobId} 
-                onRefreshReady={handleMaterialsRefreshReady}
-              />
-            </div>
-          </div>
-        </FeatureGate>
-
-        {/* Labor Tracking Section */}
-        <FeatureGate 
-          feature="labor_tracking"
-          fallback={
-            <div style={styles.card}>
-              <h2 style={styles.cardTitle}>Labor Tracking</h2>
-              <p style={{ color: '#666666', fontSize: '14px', margin: 0 }}>
-                Labor tracking is not enabled for your organization. 
-                Contact your administrator to enable this feature.
-              </p>
-            </div>
-          }
-        >
-          <div style={styles.section}>
-            <h2 style={styles.sectionTitle}>Labor Tracking</h2>
-            <div style={styles.laborGrid}>
-              {/* Labor Timer */}
+            {/* Labor Timer */}
+            <FeatureGate
+              feature="labor_tracking"
+              fallback={
+                <div style={styles.card}>
+                  <h3 style={{ color: '#ffffff', fontSize: '16px', fontWeight: 600, margin: '0 0 8px 0' }}>Labor Timer</h3>
+                  <p style={{ color: '#666666', fontSize: '14px', margin: 0 }}>
+                    Labor tracking is not enabled.
+                  </p>
+                </div>
+              }
+            >
               {workerId && orgId ? (
                 <LaborTimer
                   jobId={jobId}
@@ -435,7 +403,6 @@ export default function JobDetailPage() {
                   }}
                   onTimerStop={async (entryId, duration, cost) => {
                     console.log('Timer stopped:', entryId, duration, cost);
-                    // Refresh the labor entries list
                     if (refreshEntriesRef.current) {
                       await refreshEntriesRef.current();
                     }
@@ -448,15 +415,51 @@ export default function JobDetailPage() {
                   </p>
                 </div>
               )}
+            </FeatureGate>
+          </div>
+        </div>
 
-              {/* Labor History */}
+        {/* History Section - Side by side: Materials Used | Labor History */}
+        <div style={styles.section}>
+          <h2 style={styles.sectionTitle}>History</h2>
+          <div style={styles.laborGrid}>
+            {/* Materials Used */}
+            <FeatureGate
+              feature="inventory"
+              fallback={
+                <div style={styles.card}>
+                  <h3 style={{ color: '#ffffff', fontSize: '16px', fontWeight: 600, margin: '0 0 8px 0' }}>Materials Used</h3>
+                  <p style={{ color: '#666666', fontSize: '14px', margin: 0 }}>
+                    Inventory tracking is not enabled.
+                  </p>
+                </div>
+              }
+            >
+              <JobMaterialsList 
+                jobId={jobId} 
+                onRefreshReady={handleMaterialsRefreshReady}
+              />
+            </FeatureGate>
+
+            {/* Labor History */}
+            <FeatureGate
+              feature="labor_tracking"
+              fallback={
+                <div style={styles.card}>
+                  <h3 style={{ color: '#ffffff', fontSize: '16px', fontWeight: 600, margin: '0 0 8px 0' }}>Labor History</h3>
+                  <p style={{ color: '#666666', fontSize: '14px', margin: 0 }}>
+                    Labor tracking is not enabled.
+                  </p>
+                </div>
+              }
+            >
               <LaborEntryList 
                 jobId={jobId} 
                 onRefreshReady={handleRefreshReady}
               />
-            </div>
+            </FeatureGate>
           </div>
-        </FeatureGate>
+        </div>
       </div>
     </div>
   );
