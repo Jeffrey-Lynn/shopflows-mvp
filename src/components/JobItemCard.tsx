@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useTerminology } from '@/lib/terminology';
 
 /**
@@ -86,14 +87,20 @@ function formatDuration(from: Date, to: Date): string {
 }
 
 export function JobItemCard({ id, identifier, currentStageName, updatedAt }: JobItemCardProps) {
+  const router = useRouter();
   const terminology = useTerminology();
   const now = new Date();
   const updatedAtDate = updatedAt ? new Date(updatedAt) : null;
   const duration = updatedAtDate ? formatDuration(updatedAtDate, now) : '-';
 
+  const handleClick = () => {
+    router.push(`/jobs/${id}`);
+  };
+
   return (
     <article
       style={styles.card}
+      onClick={handleClick}
       onMouseEnter={(e) => {
         e.currentTarget.style.borderColor = '#3b82f6';
         e.currentTarget.style.boxShadow = '0 0 25px rgba(59, 130, 246, 0.3)';

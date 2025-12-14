@@ -6,19 +6,19 @@ import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/hooks/useAuth";
 
 interface PlatformStats {
-  totalShops: number;
-  totalVehicles: number;
-  totalDevices: number;
-  totalMovements: number;
+  totalOrgs: number;
+  totalJobs: number;
+  totalUsers: number;
+  totalLaborEntries: number;
 }
 
-interface Shop {
+interface Organization {
   id: string;
   name: string;
   owner_email: string | null;
   created_at: string;
-  vehicle_count: number;
-  device_count: number;
+  job_count: number;
+  user_count: number;
 }
 
 const s = {
@@ -175,7 +175,7 @@ export default function PlatformPage() {
   const router = useRouter();
   const { session, loading: authLoading, loginAdmin } = useAuth();
   const [stats, setStats] = useState<PlatformStats | null>(null);
-  const [shops, setShops] = useState<Shop[]>([]);
+  const [orgs, setOrgs] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(true);
 
   const isPlatformAdmin = session?.role === "platform_admin";
@@ -192,56 +192,56 @@ export default function PlatformPage() {
 
       try {
         // Fetch all counts
-        const [shopsRes, vehiclesRes, devicesRes, movementsRes] = await Promise.all([
-          supabase.from("shops").select("id", { count: "exact", head: true }),
+        const [orgsRes, jobsRes, usersRes, laborRes] = await Promise.all([
+          supabase.from("organizations").select("id", { count: "exact", head: true }),
           supabase.from("vehicles").select("id", { count: "exact", head: true }),
-          supabase.from("devices").select("id", { count: "exact", head: true }),
-          supabase.from("vehicle_movements").select("id", { count: "exact", head: true }),
+          supabase.from("users").select("id", { count: "exact", head: true }),
+          supabase.from("labor_entries").select("id", { count: "exact", head: true }),
         ]);
 
         setStats({
-          totalShops: shopsRes.count || 0,
-          totalVehicles: vehiclesRes.count || 0,
-          totalDevices: devicesRes.count || 0,
-          totalMovements: movementsRes.count || 0,
+          totalOrgs: orgsRes.count || 0,
+          totalJobs: jobsRes.count || 0,
+          totalUsers: usersRes.count || 0,
+          totalLaborEntries: laborRes.count || 0,
         });
 
-        // Fetch shops with owner info
-        const { data: shopsData } = await supabase
-          .from("shops")
+        // Fetch organizations with owner info
+        const { data: orgsData } = await supabase
+          .from("organizations")
           .select("id, name, created_at, contact_email")
           .order("created_at", { ascending: false });
 
-        if (shopsData) {
-          // Get vehicle and device counts per shop
-          const shopIds = shopsData.map(s => s.id);
+        if (orgsData) {
+          // Get job and user counts per org
+          const orgIds = orgsData.map(o => o.id);
           
-          const [vehicleCounts, deviceCounts] = await Promise.all([
-            supabase.from("vehicles").select("shop_id").in("shop_id", shopIds),
-            supabase.from("devices").select("shop_id").in("shop_id", shopIds),
+          const [jobCounts, userCounts] = await Promise.all([
+            supabase.from("vehicles").select("org_id").in("org_id", orgIds),
+            supabase.from("users").select("org_id").in("org_id", orgIds),
           ]);
 
-          const vehicleCountMap = new Map<string, number>();
-          const deviceCountMap = new Map<string, number>();
+          const jobCountMap = new Map<string, number>();
+          const userCountMap = new Map<string, number>();
 
-          (vehicleCounts.data || []).forEach(v => {
-            vehicleCountMap.set(v.shop_id, (vehicleCountMap.get(v.shop_id) || 0) + 1);
+          (jobCounts.data || []).forEach(j => {
+            jobCountMap.set(j.org_id, (jobCountMap.get(j.org_id) || 0) + 1);
           });
 
-          (deviceCounts.data || []).forEach(d => {
-            deviceCountMap.set(d.shop_id, (deviceCountMap.get(d.shop_id) || 0) + 1);
+          (userCounts.data || []).forEach(u => {
+            userCountMap.set(u.org_id, (userCountMap.get(u.org_id) || 0) + 1);
           });
 
-          const mapped: Shop[] = shopsData.map(shop => ({
-            id: shop.id,
-            name: shop.name,
-            owner_email: shop.contact_email,
-            created_at: shop.created_at,
-            vehicle_count: vehicleCountMap.get(shop.id) || 0,
-            device_count: deviceCountMap.get(shop.id) || 0,
+          const mapped: Organization[] = orgsData.map(org => ({
+            id: org.id,
+            name: org.name,
+            owner_email: org.contact_email,
+            created_at: org.created_at,
+            job_count: jobCountMap.get(org.id) || 0,
+            user_count: userCountMap.get(org.id) || 0,
           }));
 
-          setShops(mapped);
+          setOrgs(mapped);
         }
       } catch (err) {
         console.error("Error fetching platform data:", err);
@@ -253,16 +253,20 @@ export default function PlatformPage() {
     if (isPlatformAdmin) fetchData();
   }, [isPlatformAdmin]);
 
-  const handleViewShop = (shop: Shop) => {
-    // Impersonate shop admin - switch context to that shop
+  const handleViewOrg = (org: Organization) => {
+    // Switch context to that organization
     loginAdmin({
-      shopId: shop.id,
+      orgId: org.id,
       userId: session?.userId || "",
       email: session?.email || "",
       name: session?.name || "",
       role: "platform_admin", // Keep platform admin role
     });
     router.push("/admin");
+  };
+
+  const handleViewAllJobs = () => {
+    router.push("/platform/jobs");
   };
 
   if (authLoading || !session?.isAuthenticated) {
@@ -296,54 +300,67 @@ export default function PlatformPage() {
       ) : stats && (
         <div style={s.statsGrid}>
           <div style={s.statCard}>
-            <div style={s.statValue}>{stats.totalShops}</div>
-            <div style={s.statLabel}>Total Shops</div>
+            <div style={s.statValue}>{stats.totalOrgs}</div>
+            <div style={s.statLabel}>Organizations</div>
           </div>
           <div style={s.statCard}>
-            <div style={s.statValue}>{stats.totalVehicles}</div>
-            <div style={s.statLabel}>Total Vehicles</div>
+            <div style={s.statValue}>{stats.totalJobs}</div>
+            <div style={s.statLabel}>Total Jobs</div>
           </div>
           <div style={s.statCard}>
-            <div style={s.statValue}>{stats.totalDevices}</div>
-            <div style={s.statLabel}>Total Devices</div>
+            <div style={s.statValue}>{stats.totalUsers}</div>
+            <div style={s.statLabel}>Total Users</div>
           </div>
           <div style={s.statCard}>
-            <div style={s.statValue}>{stats.totalMovements}</div>
-            <div style={s.statLabel}>Total Movements</div>
+            <div style={s.statValue}>{stats.totalLaborEntries}</div>
+            <div style={s.statLabel}>Labor Entries</div>
           </div>
         </div>
       )}
 
-      {/* All Shops */}
+      {/* Quick Actions */}
       <div style={s.section}>
-        <h2 style={s.sectionTitle}>All Shops</h2>
+        <h2 style={s.sectionTitle}>Quick Actions</h2>
+        <div style={{ display: "flex", gap: "12px", marginBottom: "24px" }}>
+          <button
+            onClick={handleViewAllJobs}
+            style={s.viewBtn}
+          >
+            View All Jobs
+          </button>
+        </div>
+      </div>
+
+      {/* All Organizations */}
+      <div style={s.section}>
+        <h2 style={s.sectionTitle}>All Organizations</h2>
         <div style={s.card}>
           {loading ? (
-            <div style={s.emptyState}>Loading shops...</div>
-          ) : shops.length === 0 ? (
-            <div style={s.emptyState}>No shops yet.</div>
+            <div style={s.emptyState}>Loading organizations...</div>
+          ) : orgs.length === 0 ? (
+            <div style={s.emptyState}>No organizations yet.</div>
           ) : (
             <>
               <div style={s.tableHeader}>
-                <span>Shop Name</span>
-                <span>Owner Email</span>
+                <span>Organization</span>
+                <span>Contact Email</span>
                 <span>Created</span>
-                <span>Vehicles</span>
-                <span>Devices</span>
+                <span>Jobs</span>
+                <span>Users</span>
                 <span>Action</span>
               </div>
-              {shops.map(shop => (
-                <div key={shop.id} style={s.tableRow}>
-                  <span style={s.shopName}>{shop.name}</span>
-                  <span>{shop.owner_email || "—"}</span>
-                  <span>{formatDate(shop.created_at)}</span>
-                  <span>{shop.vehicle_count}</span>
-                  <span>{shop.device_count}</span>
+              {orgs.map(org => (
+                <div key={org.id} style={s.tableRow}>
+                  <span style={s.shopName}>{org.name}</span>
+                  <span>{org.owner_email || "—"}</span>
+                  <span>{formatDate(org.created_at)}</span>
+                  <span>{org.job_count}</span>
+                  <span>{org.user_count}</span>
                   <button
-                    onClick={() => handleViewShop(shop)}
+                    onClick={() => handleViewOrg(org)}
                     style={s.viewBtn}
                   >
-                    View Shop
+                    View Org
                   </button>
                 </div>
               ))}
