@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useTerminology } from '@/lib/terminology';
 import {
   calculateDuration,
@@ -24,6 +25,8 @@ export interface LaborEntryListProps {
   compact?: boolean;
   /** Optional callback when an entry is clicked */
   onEntryClick?: (entryId: string) => void;
+  /** Callback to expose the refresh function to parent */
+  onRefreshReady?: (refresh: () => Promise<void>) => void;
 }
 
 // =============================================================================
@@ -279,11 +282,19 @@ export function LaborEntryList({
   showWorkerNames = true,
   compact = false,
   onEntryClick,
+  onRefreshReady,
 }: LaborEntryListProps) {
   const terminology = useTerminology();
   
   // Use real hook for data fetching with realtime updates
   const { entries, loading, error, refresh } = useLaborEntries(jobId);
+
+  // Expose refresh function to parent
+  useEffect(() => {
+    if (onRefreshReady) {
+      onRefreshReady(refresh);
+    }
+  }, [onRefreshReady, refresh]);
 
   // Calculate summary from entries
   const summary = entries.length > 0 ? calculateSummary(entries) : null;

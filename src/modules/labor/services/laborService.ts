@@ -23,7 +23,7 @@ interface StartTimerParams {
 }
 
 interface LaborEntryWithWorker extends LaborEntryDB {
-  users?: { name: string } | null;
+  users?: { full_name: string } | null;
 }
 
 // =============================================================================
@@ -93,7 +93,7 @@ export async function getLaborEntries(
     .from('labor_entries')
     .select(`
       *,
-      users:worker_id (name)
+      users:worker_id (full_name)
     `)
     .eq('job_id', jobId)
     .order('start_time', { ascending: false });
@@ -111,7 +111,7 @@ export async function getLaborEntries(
 
     return {
       ...base,
-      workerName: entry.users?.name ?? 'Unknown',
+      workerName: entry.users?.full_name ?? 'Unknown',
       jobIdentifier: '', // Filled in by caller if needed
       durationHours,
       cost,
@@ -302,7 +302,7 @@ export async function getOrgLaborEntries(
     .from('labor_entries')
     .select(`
       *,
-      users:worker_id (name)
+      users:worker_id (full_name)
     `)
     .eq('org_id', orgId)
     .order('start_time', { ascending: false });
@@ -335,7 +335,7 @@ export async function getOrgLaborEntries(
 
     return {
       ...base,
-      workerName: entry.users?.name ?? 'Unknown',
+      workerName: entry.users?.full_name ?? 'Unknown',
       jobIdentifier: '',
       durationHours,
       cost,

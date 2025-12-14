@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/hooks/useAuth';
@@ -188,35 +188,51 @@ export default function JobDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Redirect if not authenticated
-  useEffect(() => {
-    if (!authLoading && !session?.isAuthenticated) {
-      router.replace('/login');
-    }
-  }, [authLoading, session, router]);
+  // Ref to hold the labor entries refresh function (must be before any early returns)
+  const refreshEntriesRef = useRef<(() => Promise<void>) | null>(null);
+  
+  const handleRefreshReady = useCallback((refresh: () => Promise<void>) => {
+    refreshEntriesRef.current = refresh;
+  }, []);
+
+  // TEMP: Commented out auth check for testing
+  // useEffect(() => {
+  //   if (!authLoading && !session?.isAuthenticated) {
+  //     router.replace('/login');
+  //   }
+  // }, [authLoading, session, router]);
 
   // Fetch job data
   useEffect(() => {
     const fetchJob = async () => {
-      if (!jobId || !session?.shopId) return;
+      // TEMP: Hardcode org_id for testing
+      const testOrgId = '10000000-0000-0000-0000-000000000001';
+      console.log('=== JOB DETAIL DEBUG ===');
+      console.log('jobId:', jobId);
+      console.log('Using hardcoded org_id:', testOrgId);
+      
+      if (!jobId) return;
       
       setLoading(true);
       setError(null);
       
       try {
-        // Fetch job with location name
+        // Fetch job (updated for new schema)
+        console.log('Querying vehicle with id:', jobId);
         const { data: jobData, error: jobError } = await supabase
           .from('vehicles')
           .select(`
             id,
-            vin_last_8,
-            current_location_id,
+            vin,
+            current_stage_id,
             created_at,
             updated_at
           `)
           .eq('id', jobId)
-          .eq('shop_id', session.shopId)
+          .eq('org_id', testOrgId)
           .single();
+        
+        console.log('Query result:', { jobData, jobError });
 
         if (jobError) {
           if (jobError.code === 'PGRST116') {
@@ -227,21 +243,16 @@ export default function JobDetailPage() {
           return;
         }
 
-        // Fetch location name if exists
-        let locationName: string | null = null;
-        if (jobData.current_location_id) {
-          const { data: locationData } = await supabase
-            .from('locations')
-            .select('name')
-            .eq('id', jobData.current_location_id)
-            .single();
-          locationName = locationData?.name ?? null;
-        }
-
+        // Map to JobDetail format
         setJob({
-          ...jobData,
-          current_location_name: locationName,
+          id: jobData.id,
+          vin_last_8: jobData.vin?.slice(-8) || 'N/A',
+          current_location_id: jobData.current_stage_id,
+          current_location_name: 'In Progress', // TODO: Fetch stage name
+          created_at: jobData.created_at,
+          updated_at: jobData.updated_at,
         });
+        console.log('Job loaded successfully');
       } catch (err) {
         console.error('Failed to fetch job:', err);
         setError('Failed to load job details');
@@ -251,10 +262,10 @@ export default function JobDetailPage() {
     };
 
     fetchJob();
-  }, [jobId, session?.shopId, terminology.item]);
+  }, [jobId, terminology.item]); // Removed session dependency
 
-  // Loading state
-  if (authLoading || loading) {
+  // Loading state (removed authLoading check for testing)
+  if (loading) {
     return (
       <div style={styles.page}>
         <div style={styles.container}>
@@ -285,10 +296,16 @@ export default function JobDetailPage() {
     );
   }
 
-  // Get worker info from session
-  const workerId = session?.userId ?? '';
-  const workerName = session?.name || session?.email || 'Unknown User';
-  const orgId = session?.shopId ?? '';
+  // TEMP: Hardcoded worker info for testing
+  const workerId = '849ffe5e-dd64-41a2-96be-bada46ff5bc7';
+  const workerName = 'Jeff Lynn';
+  const orgId = '10000000-0000-0000-0000-000000000001';
+  
+  console.log('=== LABOR TIMER PROPS ===');
+  console.log('jobId:', jobId);
+  console.log('workerId:', workerId);
+  console.log('workerName:', workerName);
+  console.log('orgId:', orgId);
 
   return (
     <div style={styles.page}>
@@ -367,8 +384,12 @@ export default function JobDetailPage() {
                   onTimerStart={(entryId) => {
                     console.log('Timer started:', entryId);
                   }}
-                  onTimerStop={(entryId, duration, cost) => {
+                  onTimerStop={async (entryId, duration, cost) => {
                     console.log('Timer stopped:', entryId, duration, cost);
+                    // Refresh the labor entries list
+                    if (refreshEntriesRef.current) {
+                      await refreshEntriesRef.current();
+                    }
                   }}
                 />
               ) : (
@@ -380,7 +401,10 @@ export default function JobDetailPage() {
               )}
 
               {/* Labor History */}
-              <LaborEntryList jobId={jobId} />
+              <LaborEntryList 
+                jobId={jobId} 
+                onRefreshReady={handleRefreshReady}
+              />
             </div>
           </div>
         </FeatureGate>

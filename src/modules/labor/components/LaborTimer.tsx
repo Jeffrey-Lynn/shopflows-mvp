@@ -255,16 +255,24 @@ export function LaborTimer({
   const error = timerError || startError || stopError;
 
   // Sync timer state with hook data
+  // Only sync from hook data on initial load or when timer starts externally
+  // Don't override local state when we've just stopped the timer (showing summary)
   useEffect(() => {
     if (timerLoading) return;
     
     if (isRunning && activeEntry) {
+      // Timer is running - sync to running state
       setTimerState('running');
       setHourlyRate(activeEntry.hourlyRate);
+    } else if (timerState === 'stopped') {
+      // We're showing the stopped summary - don't change state
+      // User will click "Start New Timer" to go back to idle
     } else if (timerState === 'running' && !isRunning) {
-      // Timer was stopped externally, stay in running state until we handle it
-    } else if (timerState !== 'stopped') {
+      // Timer was stopped externally (not by us) - go to idle
       setTimerState('idle');
+      setElapsedSeconds(0);
+    } else if (timerState === 'idle') {
+      // Already idle, nothing to do
     }
   }, [isRunning, activeEntry, timerLoading, timerState]);
 
@@ -316,7 +324,9 @@ export function LaborTimer({
       setTimerState('running');
       setElapsedSeconds(0);
       onTimerStart?.(entryId);
-      // Hook will auto-refresh via realtime subscription
+      
+      // Refresh active timer to update UI immediately
+      await refreshTimer();
     }
   };
 
@@ -343,7 +353,9 @@ export function LaborTimer({
       
       setTimerState('stopped');
       onTimerStop?.(activeTimer.entryId, duration, cost);
-      // Hook will auto-refresh via realtime subscription
+      
+      // Refresh to clear active timer state
+      await refreshTimer();
     }
   };
 
