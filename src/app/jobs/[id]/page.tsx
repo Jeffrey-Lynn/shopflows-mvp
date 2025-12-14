@@ -8,6 +8,8 @@ import { useTerminology } from '@/lib/terminology';
 import { FeatureGate } from '@/components/FeatureGate';
 import { LaborTimer } from '@/modules/labor/components/LaborTimer';
 import { LaborEntryList } from '@/modules/labor/components/LaborEntryList';
+import { MaterialUsageTracker } from '@/modules/inventory/components/MaterialUsageTracker';
+import { JobMaterialsList } from '@/modules/inventory/components/JobMaterialsList';
 
 // =============================================================================
 // Types
@@ -195,6 +197,13 @@ export default function JobDetailPage() {
     refreshEntriesRef.current = refresh;
   }, []);
 
+  // Ref to hold the materials list refresh function
+  const refreshMaterialsRef = useRef<(() => Promise<void>) | null>(null);
+  
+  const handleMaterialsRefreshReady = useCallback((refresh: () => Promise<void>) => {
+    refreshMaterialsRef.current = refresh;
+  }, []);
+
   // TEMP: Commented out auth check for testing
   // useEffect(() => {
   //   if (!authLoading && !session?.isAuthenticated) {
@@ -358,6 +367,46 @@ export default function JobDetailPage() {
         </div>
 
         {/* Labor Tracking Section - Feature Gated */}
+        {/* Materials Section - Primary action for adding materials */}
+        <FeatureGate
+          feature="inventory"
+          fallback={
+            <div style={styles.card}>
+              <h2 style={styles.cardTitle}>Materials</h2>
+              <p style={{ color: '#666666', fontSize: '14px', margin: 0 }}>
+                Inventory tracking is not enabled for your organization. 
+                Contact your administrator to enable this feature.
+              </p>
+            </div>
+          }
+        >
+          <div style={styles.section}>
+            <h2 style={styles.sectionTitle}>Materials</h2>
+            <div style={styles.laborGrid}>
+              {/* Add Materials */}
+              <MaterialUsageTracker
+                jobId={jobId}
+                orgId={orgId}
+                userId={workerId}
+                onMaterialAdded={async (material) => {
+                  console.log('Material added:', material);
+                  // Refresh the materials list
+                  if (refreshMaterialsRef.current) {
+                    await refreshMaterialsRef.current();
+                  }
+                }}
+              />
+
+              {/* Materials Used */}
+              <JobMaterialsList 
+                jobId={jobId} 
+                onRefreshReady={handleMaterialsRefreshReady}
+              />
+            </div>
+          </div>
+        </FeatureGate>
+
+        {/* Labor Tracking Section */}
         <FeatureGate 
           feature="labor_tracking"
           fallback={

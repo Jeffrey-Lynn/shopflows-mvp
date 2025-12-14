@@ -18,8 +18,12 @@ export type { LaborEntryListProps } from './labor/components/LaborEntryList';
 export { useLaborEntries, useActiveTimer, useStartTimer, useStopTimer } from './labor/hooks';
 export * as laborService from './labor/services/laborService';
 
-// Inventory module (placeholder)
-// export * from './inventory';
+// Inventory module
+export * from './inventory/types';
+export { InventoryList, MaterialUsageTracker, JobMaterialsList } from './inventory/components';
+export type { InventoryListProps, MaterialUsageTrackerProps, JobMaterialsListProps } from './inventory/components';
+export { useInventoryItems, useJobMaterials, useAddMaterial } from './inventory/hooks';
+export * as inventoryService from './inventory/services/inventoryService';
 
 // Messaging module (placeholder)
 // export * from './messaging';

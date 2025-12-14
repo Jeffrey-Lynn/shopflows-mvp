@@ -6,6 +6,14 @@ import { useAuth } from '@/hooks/useAuth';
 import type { FeatureFlags, AvailableFeature } from './types';
 import { DEFAULT_FEATURES } from './types';
 
+const FORCED_FEATURES: FeatureFlags = {
+  labor_tracking: true,
+  inventory: true,
+  messaging: true,
+  invoicing: false,
+  ai_assistant: false,
+};
+
 interface UseFeaturesReturn {
   /** Current feature flags for the organization */
   features: FeatureFlags;
@@ -29,12 +37,13 @@ interface UseFeaturesReturn {
  */
 export function useFeatures(): UseFeaturesReturn {
   const { session } = useAuth();
-  const [features, setFeatures] = useState<FeatureFlags>(DEFAULT_FEATURES);
+  const [features, setFeatures] = useState<FeatureFlags>(FORCED_FEATURES);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchFeatures = useCallback(async () => {
     if (!session?.shopId) {
+      setFeatures(FORCED_FEATURES);
       setLoading(false);
       return;
     }
@@ -53,16 +62,16 @@ export function useFeatures(): UseFeaturesReturn {
       if (fetchError) {
         // If column doesn't exist or other error, use defaults
         console.warn('Could not fetch features, using defaults:', fetchError.message);
-        setFeatures(DEFAULT_FEATURES);
+        setFeatures(FORCED_FEATURES);
       } else if (data) {
         // For now, use defaults since column may not exist yet
         // When migration is run, we can fetch: data.features
-        setFeatures(DEFAULT_FEATURES);
+        setFeatures(FORCED_FEATURES);
       }
     } catch (err) {
       console.error('Error fetching features:', err);
       setError('Failed to load features');
-      setFeatures(DEFAULT_FEATURES);
+      setFeatures(FORCED_FEATURES);
     } finally {
       setLoading(false);
     }
