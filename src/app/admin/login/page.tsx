@@ -125,40 +125,75 @@ export default function AdminLoginPage() {
     setLoading(true);
 
     try {
-      const { data, error: rpcError } = await supabase.rpc("admin_login", {
-        p_email: email,
-        p_password: password,
+      // Sign in with Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
       });
 
-      console.log("admin_login RPC response:", JSON.stringify({ data, rpcError }, null, 2));
+      console.log("Supabase Auth response:", { authData, authError });
 
-      if (rpcError) throw rpcError;
+      if (authError) {
+        console.error("Auth error:", authError);
+        setError(authError.message || "Invalid email or password");
+        setLoading(false);
+        return;
+      }
 
-      // Handle array response from RPC (returns [{ success: true, ... }])
-      const result = (Array.isArray(data) && data.length > 0) ? data[0] as Record<string, unknown> : data as Record<string, unknown>;
-      const success = result?.success === true;
+      if (!authData.user) {
+        setError("Login failed. No user returned.");
+        setLoading(false);
+        return;
+      }
 
-      console.log("Parsed result:", JSON.stringify({ result, success }, null, 2));
+      // Fetch user data from users table
+      const { data: userData, error: userError } = await supabase.rpc('get_user_by_auth_id', {
+        p_auth_id: authData.user.id,
+      });
 
-      if (success) {
-        loginAdmin({
-          orgId: (result.org_id || result.shop_id || "") as string,
-          userId: result.user_id as string,
-          email: result.email as string,
-          name: (result.name || result.full_name || "") as string,
-          role: result.role as UserRole,
-        });
-        // Redirect platform admins to platform dashboard
-        if (result.role === "platform_admin") {
-          router.push("/platform");
-        } else {
-          router.push("/admin");
-        }
+      console.log("User data response:", { userData, userError });
+
+      if (userError) {
+        console.error("Error fetching user data:", userError);
+        setError("Failed to load user profile");
+        setLoading(false);
+        return;
+      }
+
+      // RPC returns array, get first row
+      const user = Array.isArray(userData) && userData.length > 0 ? userData[0] : userData;
+
+      if (!user) {
+        setError("User profile not found. Please contact support.");
+        setLoading(false);
+        return;
+      }
+
+      // Check if user is admin
+      if (!['platform_admin', 'shop_admin', 'supervisor'].includes(user.role)) {
+        setError("Access denied. Admin privileges required.");
+        await supabase.auth.signOut();
+        setLoading(false);
+        return;
+      }
+
+      // Store session in localStorage (useAuth will also handle this via onAuthStateChange)
+      loginAdmin({
+        orgId: user.org_id || "",
+        userId: user.id,
+        email: user.email || email,
+        name: user.full_name || "",
+        role: user.role as UserRole,
+      });
+
+      // Redirect based on role
+      if (user.role === "platform_admin") {
+        router.push("/platform");
       } else {
-        setError((result?.error as string) || "Invalid email or password");
+        router.push("/admin");
       }
     } catch (err) {
-      console.error(err);
+      console.error("Login error:", err);
       setError("Login failed. Please try again.");
     } finally {
       setLoading(false);

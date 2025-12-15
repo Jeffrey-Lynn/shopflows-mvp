@@ -2,14 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/hooks/useAuth";
 
 interface PlatformStats {
   totalOrgs: number;
-  totalJobs: number;
   totalUsers: number;
-  totalLaborEntries: number;
+  totalDepartments: number;
+  recentActivity: number;
 }
 
 interface Organization {
@@ -20,6 +21,49 @@ interface Organization {
   job_count: number;
   user_count: number;
 }
+
+// Icons
+const BuildingIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="4" y="2" width="16" height="20" rx="2" ry="2" />
+    <path d="M9 22v-4h6v4" />
+    <path d="M8 6h.01" />
+    <path d="M16 6h.01" />
+    <path d="M8 10h.01" />
+    <path d="M16 10h.01" />
+    <path d="M8 14h.01" />
+    <path d="M16 14h.01" />
+  </svg>
+);
+
+const UsersIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+    <circle cx="9" cy="7" r="4" />
+    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+  </svg>
+);
+
+const DepartmentsIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+    <polyline points="9 22 9 12 15 12 15 22" />
+  </svg>
+);
+
+const ActivityIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+  </svg>
+);
+
+const ArrowRightIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="5" y1="12" x2="19" y2="12" />
+    <polyline points="12 5 19 12 12 19" />
+  </svg>
+);
 
 const s = {
   page: {
@@ -192,18 +236,17 @@ export default function PlatformPage() {
 
       try {
         // Fetch all counts
-        const [orgsRes, jobsRes, usersRes, laborRes] = await Promise.all([
+        const [orgsRes, usersRes, deptsRes] = await Promise.all([
           supabase.from("organizations").select("id", { count: "exact", head: true }),
-          supabase.from("vehicles").select("id", { count: "exact", head: true }),
           supabase.from("users").select("id", { count: "exact", head: true }),
-          supabase.from("labor_entries").select("id", { count: "exact", head: true }),
+          supabase.from("departments").select("id", { count: "exact", head: true }),
         ]);
 
         setStats({
           totalOrgs: orgsRes.count || 0,
-          totalJobs: jobsRes.count || 0,
           totalUsers: usersRes.count || 0,
-          totalLaborEntries: laborRes.count || 0,
+          totalDepartments: deptsRes.count || 0,
+          recentActivity: 0, // Placeholder for now
         });
 
         // Fetch organizations with owner info
@@ -277,6 +320,8 @@ export default function PlatformPage() {
     return <div style={s.emptyState}>Access denied. Platform admin only.</div>;
   }
 
+  const userName = session?.name || session?.email?.split('@')[0] || 'Admin';
+
   return (
     <main style={s.page}>
       <header style={s.header}>
@@ -291,7 +336,23 @@ export default function PlatformPage() {
         </div>
       </header>
 
-      <h1 style={s.title}>Platform Overview</h1>
+      {/* Welcome Message */}
+      <div style={{
+        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+        border: '1px solid rgba(59, 130, 246, 0.2)',
+        borderRadius: '12px',
+        padding: '20px 24px',
+        marginBottom: '24px',
+      }}>
+        <h1 style={{ ...s.title, marginBottom: '4px', fontSize: '24px' }}>
+          Welcome back, {userName}! 👋
+        </h1>
+        <p style={{ ...s.subtitle, marginBottom: 0 }}>
+          Here&apos;s what&apos;s happening across your platform today.
+        </p>
+      </div>
+
+      <h2 style={{ ...s.title, fontSize: '20px' }}>Platform Overview</h2>
       <p style={s.subtitle}>Monitor all shops and activity across the platform</p>
 
       {/* Stats Grid */}
@@ -299,21 +360,33 @@ export default function PlatformPage() {
         <div style={s.emptyState}>Loading stats...</div>
       ) : stats && (
         <div style={s.statsGrid}>
-          <div style={s.statCard}>
+          <div style={{...s.statCard, borderLeft: '3px solid #3b82f6'}}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+              <div style={{ color: '#3b82f6' }}><BuildingIcon /></div>
+              <div style={s.statLabel}>Organizations</div>
+            </div>
             <div style={s.statValue}>{stats.totalOrgs}</div>
-            <div style={s.statLabel}>Organizations</div>
           </div>
-          <div style={s.statCard}>
-            <div style={s.statValue}>{stats.totalJobs}</div>
-            <div style={s.statLabel}>Total Jobs</div>
-          </div>
-          <div style={s.statCard}>
+          <div style={{...s.statCard, borderLeft: '3px solid #10b981'}}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+              <div style={{ color: '#10b981' }}><UsersIcon /></div>
+              <div style={s.statLabel}>Total Users</div>
+            </div>
             <div style={s.statValue}>{stats.totalUsers}</div>
-            <div style={s.statLabel}>Total Users</div>
           </div>
-          <div style={s.statCard}>
-            <div style={s.statValue}>{stats.totalLaborEntries}</div>
-            <div style={s.statLabel}>Labor Entries</div>
+          <div style={{...s.statCard, borderLeft: '3px solid #f59e0b'}}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+              <div style={{ color: '#f59e0b' }}><DepartmentsIcon /></div>
+              <div style={s.statLabel}>Departments</div>
+            </div>
+            <div style={s.statValue}>{stats.totalDepartments}</div>
+          </div>
+          <div style={{...s.statCard, borderLeft: '3px solid #8b5cf6'}}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+              <div style={{ color: '#8b5cf6' }}><ActivityIcon /></div>
+              <div style={s.statLabel}>Recent Activity</div>
+            </div>
+            <div style={s.statValue}>{stats.recentActivity}</div>
           </div>
         </div>
       )}
@@ -321,13 +394,126 @@ export default function PlatformPage() {
       {/* Quick Actions */}
       <div style={s.section}>
         <h2 style={s.sectionTitle}>Quick Actions</h2>
-        <div style={{ display: "flex", gap: "12px", marginBottom: "24px" }}>
-          <button
-            onClick={handleViewAllJobs}
-            style={s.viewBtn}
-          >
-            View All Jobs
-          </button>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+          gap: '16px',
+        }}>
+          <Link href="/platform/organizations" style={{ textDecoration: 'none' }}>
+            <div style={{
+              ...s.card,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = '#3b82f6';
+              e.currentTarget.style.transform = 'translateY(-2px)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = '#2a2a2a';
+              e.currentTarget.style.transform = 'translateY(0)';
+            }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ color: '#3b82f6' }}><BuildingIcon /></div>
+                <div>
+                  <div style={{ color: '#ffffff', fontWeight: 500, fontSize: '15px' }}>View All Organizations</div>
+                  <div style={{ color: '#666666', fontSize: '13px' }}>Manage shops and tenants</div>
+                </div>
+              </div>
+              <div style={{ color: '#666666' }}><ArrowRightIcon /></div>
+            </div>
+          </Link>
+
+          <Link href="/platform/activity" style={{ textDecoration: 'none' }}>
+            <div style={{
+              ...s.card,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = '#8b5cf6';
+              e.currentTarget.style.transform = 'translateY(-2px)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = '#2a2a2a';
+              e.currentTarget.style.transform = 'translateY(0)';
+            }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ color: '#8b5cf6' }}><ActivityIcon /></div>
+                <div>
+                  <div style={{ color: '#ffffff', fontWeight: 500, fontSize: '15px' }}>View Activity</div>
+                  <div style={{ color: '#666666', fontSize: '13px' }}>Platform-wide activity log</div>
+                </div>
+              </div>
+              <div style={{ color: '#666666' }}><ArrowRightIcon /></div>
+            </div>
+          </Link>
+
+          <Link href="/admin/users" style={{ textDecoration: 'none' }}>
+            <div style={{
+              ...s.card,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = '#10b981';
+              e.currentTarget.style.transform = 'translateY(-2px)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = '#2a2a2a';
+              e.currentTarget.style.transform = 'translateY(0)';
+            }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ color: '#10b981' }}><UsersIcon /></div>
+                <div>
+                  <div style={{ color: '#ffffff', fontWeight: 500, fontSize: '15px' }}>Manage Users</div>
+                  <div style={{ color: '#666666', fontSize: '13px' }}>Add and edit users</div>
+                </div>
+              </div>
+              <div style={{ color: '#666666' }}><ArrowRightIcon /></div>
+            </div>
+          </Link>
+
+          <Link href="/admin/departments" style={{ textDecoration: 'none' }}>
+            <div style={{
+              ...s.card,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = '#f59e0b';
+              e.currentTarget.style.transform = 'translateY(-2px)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = '#2a2a2a';
+              e.currentTarget.style.transform = 'translateY(0)';
+            }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ color: '#f59e0b' }}><DepartmentsIcon /></div>
+                <div>
+                  <div style={{ color: '#ffffff', fontWeight: 500, fontSize: '15px' }}>Manage Departments</div>
+                  <div style={{ color: '#666666', fontSize: '13px' }}>Configure departments</div>
+                </div>
+              </div>
+              <div style={{ color: '#666666' }}><ArrowRightIcon /></div>
+            </div>
+          </Link>
         </div>
       </div>
 
