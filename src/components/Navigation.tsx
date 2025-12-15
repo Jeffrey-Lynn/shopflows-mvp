@@ -140,18 +140,19 @@ export function Navigation() {
   return (
     <>
       {/* Top Navigation Bar */}
-      <nav style={{
+      <nav className="top-nav" style={{
         position: 'fixed',
         top: 0,
         left: 0,
         right: 0,
-        height: '60px',
+        minHeight: '60px',
         backgroundColor: '#1a1a1a',
         borderBottom: '1px solid #2a2a2a',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: '0 16px',
+        paddingTop: 'env(safe-area-inset-top, 0px)',
         zIndex: 1000,
       }}>
         {/* Logo and Org Context */}
@@ -369,10 +370,13 @@ export function Navigation() {
       </div>
 
       {/* Spacer for fixed nav */}
-      <div style={{ height: '60px' }} />
+      <div className="nav-spacer" style={{ height: '60px' }} />
 
       {/* Responsive Styles */}
       <style jsx global>{`
+        .nav-spacer {
+          height: calc(60px + env(safe-area-inset-top, 0px)) !important;
+        }
         @media (min-width: 768px) {
           .mobile-menu-btn {
             display: none !important;
