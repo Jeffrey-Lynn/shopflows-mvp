@@ -506,6 +506,21 @@ export default function EmployeeDashboard() {
             <span style={s.navLabel}>All Jobs</span>
           </Link>
           <Link
+            href="/time-history"
+            style={s.navCard}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = "#10b981";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = "#2a2a2a";
+            }}
+          >
+            <div style={{ ...s.navIcon, backgroundColor: "rgba(16, 185, 129, 0.1)", color: "#10b981" }}>
+              <ClockIcon />
+            </div>
+            <span style={s.navLabel}>Time History</span>
+          </Link>
+          <Link
             href="/profile"
             style={s.navCard}
             onMouseEnter={(e) => {
