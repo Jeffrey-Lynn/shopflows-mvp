@@ -237,8 +237,12 @@ export default function EmployeeDashboard() {
   const router = useRouter();
   const { session, loading, logout } = useAuth();
   const [isClockedIn, setIsClockedIn] = useState(false);
-  const [todayHours, setTodayHours] = useState("0:00");
+  const [todayHours, setTodayHours] = useState("0:00:00");
   const [clockInTime, setClockInTime] = useState<Date | null>(null);
+  const [currentEntryId, setCurrentEntryId] = useState<string | null>(null);
+  const [clockLoading, setClockLoading] = useState(false);
+  const [lastSessionHours, setLastSessionHours] = useState<string | null>(null);
+  const [statusLoading, setStatusLoading] = useState(true);
 
   useEffect(() => {
     if (!loading && !session?.isAuthenticated) {
@@ -246,7 +250,46 @@ export default function EmployeeDashboard() {
     }
   }, [loading, session, router]);
 
-  // Update hours display when clocked in
+  // Check clock status on page load
+  useEffect(() => {
+    const checkClockStatus = async () => {
+      if (!session?.userId) return;
+
+      try {
+        const { data, error } = await supabase.rpc("get_clock_status", {
+          p_user_id: session.userId,
+        });
+
+        console.log("[Dashboard] Clock status:", data, error);
+
+        if (error) {
+          console.error("Error checking clock status:", error);
+          setStatusLoading(false);
+          return;
+        }
+
+        if (data?.is_clocked_in) {
+          setIsClockedIn(true);
+          setCurrentEntryId(data.entry_id);
+          setClockInTime(new Date(data.clock_in_time));
+        } else {
+          setIsClockedIn(false);
+          setCurrentEntryId(null);
+          setClockInTime(null);
+        }
+      } catch (err) {
+        console.error("Error checking clock status:", err);
+      } finally {
+        setStatusLoading(false);
+      }
+    };
+
+    if (session?.userId) {
+      checkClockStatus();
+    }
+  }, [session?.userId]);
+
+  // Update hours display when clocked in - update every second for live timer
   useEffect(() => {
     if (!isClockedIn || !clockInTime) return;
 
@@ -255,26 +298,101 @@ export default function EmployeeDashboard() {
       const diff = now.getTime() - clockInTime.getTime();
       const hours = Math.floor(diff / (1000 * 60 * 60));
       const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-      setTodayHours(`${hours}:${minutes.toString().padStart(2, "0")}`);
+      const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+      setTodayHours(`${hours}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`);
     };
 
     updateHours();
-    const interval = setInterval(updateHours, 60000); // Update every minute
+    const interval = setInterval(updateHours, 1000); // Update every second
 
     return () => clearInterval(interval);
   }, [isClockedIn, clockInTime]);
 
+  const handleClockIn = async () => {
+    if (!session?.userId || !session?.orgId) return;
+
+    setClockLoading(true);
+    setLastSessionHours(null);
+
+    try {
+      const { data, error } = await supabase.rpc("clock_in", {
+        p_user_id: session.userId,
+        p_org_id: session.orgId,
+      });
+
+      console.log("[Dashboard] Clock in result:", data, error);
+
+      if (error) {
+        console.error("Error clocking in:", error);
+        alert("Failed to clock in. Please try again.");
+        return;
+      }
+
+      if (data?.success) {
+        setIsClockedIn(true);
+        setCurrentEntryId(data.entry_id);
+        setClockInTime(new Date(data.clock_in_time));
+      } else if (data?.error === "Already clocked in") {
+        // Already clocked in, restore state
+        setIsClockedIn(true);
+        setCurrentEntryId(data.entry_id);
+        setClockInTime(new Date(data.clock_in_time));
+      } else {
+        alert(data?.error || "Failed to clock in");
+      }
+    } catch (err) {
+      console.error("Error clocking in:", err);
+      alert("Failed to clock in. Please try again.");
+    } finally {
+      setClockLoading(false);
+    }
+  };
+
+  const handleClockOut = async () => {
+    if (!session?.userId) return;
+
+    setClockLoading(true);
+
+    try {
+      const { data, error } = await supabase.rpc("clock_out", {
+        p_user_id: session.userId,
+      });
+
+      console.log("[Dashboard] Clock out result:", data, error);
+
+      if (error) {
+        console.error("Error clocking out:", error);
+        alert("Failed to clock out. Please try again.");
+        return;
+      }
+
+      if (data?.success) {
+        // Format total hours for display
+        const totalHours = parseFloat(data.total_hours);
+        const hours = Math.floor(totalHours);
+        const minutes = Math.round((totalHours - hours) * 60);
+        setLastSessionHours(`${hours}h ${minutes}m`);
+
+        setIsClockedIn(false);
+        setCurrentEntryId(null);
+        setClockInTime(null);
+        setTodayHours("0:00:00");
+      } else {
+        alert(data?.error || "Failed to clock out");
+      }
+    } catch (err) {
+      console.error("Error clocking out:", err);
+      alert("Failed to clock out. Please try again.");
+    } finally {
+      setClockLoading(false);
+    }
+  };
+
   const handleClockToggle = () => {
     if (isClockedIn) {
-      // Clock out
-      setIsClockedIn(false);
-      setClockInTime(null);
-      // TODO: Save clock out time to database
+      handleClockOut();
     } else {
-      // Clock in
-      setIsClockedIn(true);
-      setClockInTime(new Date());
-      // TODO: Save clock in time to database
+      handleClockIn();
     }
   };
 
@@ -320,15 +438,21 @@ export default function EmployeeDashboard() {
             {isClockedIn ? "Currently Clocked In" : "Not Clocked In"}
           </span>
         </div>
-        <div style={s.hoursDisplay}>{todayHours}</div>
-        <div style={s.hoursLabel}>Today&apos;s Hours</div>
+        <div style={s.hoursDisplay}>{statusLoading ? "..." : todayHours}</div>
+        <div style={s.hoursLabel}>
+          {lastSessionHours ? `Last session: ${lastSessionHours}` : "Today's Hours"}
+        </div>
         <button
           onClick={handleClockToggle}
+          disabled={clockLoading || statusLoading}
           style={{
             ...s.clockBtn,
             ...(isClockedIn ? s.clockOutBtn : s.clockInBtn),
+            opacity: clockLoading || statusLoading ? 0.6 : 1,
+            cursor: clockLoading || statusLoading ? "not-allowed" : "pointer",
           }}
           onMouseEnter={(e) => {
+            if (clockLoading || statusLoading) return;
             if (isClockedIn) {
               e.currentTarget.style.backgroundColor = "rgba(239, 68, 68, 0.2)";
             } else {
@@ -344,7 +468,7 @@ export default function EmployeeDashboard() {
           }}
         >
           <ClockIcon />
-          {isClockedIn ? "Clock Out" : "Clock In"}
+          {clockLoading ? "Processing..." : isClockedIn ? "Clock Out" : "Clock In"}
         </button>
       </section>
 
