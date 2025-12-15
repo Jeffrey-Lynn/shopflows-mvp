@@ -129,36 +129,111 @@ export default function EmployeeLoginPage() {
     setError(null);
     setLoading(true);
 
+    console.log("=== Employee Login Debug ===");
+    console.log("1. Attempting login with email:", email.trim());
+
     try {
       // Sign in with Supabase Auth
+      console.log("2. Calling supabase.auth.signInWithPassword...");
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
       });
 
+      console.log("3. Supabase Auth Response:");
+      console.log("   - authData:", authData);
+      console.log("   - authData.user:", authData?.user);
+      console.log("   - authData.user.id:", authData?.user?.id);
+      console.log("   - authError:", authError);
+
       if (authError) {
+        console.log("4. AUTH ERROR:", authError.message, authError);
         setError(authError.message);
         return;
       }
 
       if (!authData.user) {
+        console.log("4. NO USER in authData");
         setError("Login failed. Please try again.");
         return;
       }
 
-      // Fetch user profile from users table
+      console.log("4. Auth successful! User ID:", authData.user.id);
+      console.log("5. Fetching user profile from users table...");
+      console.log("   - Looking for auth_id:", authData.user.id);
+
+      // First try direct query to users table
       const { data: userData, error: userError } = await supabase
         .from("users")
-        .select("id, full_name, role, org_id")
+        .select("id, full_name, role, org_id, auth_id, email")
         .eq("auth_id", authData.user.id)
         .single();
 
-      if (userError || !userData) {
+      console.log("6. Users table query result:");
+      console.log("   - userData:", userData);
+      console.log("   - userError:", userError);
+
+      // If direct query fails, try the RPC
+      if (userError) {
+        console.log("7. Direct query failed, trying get_user_by_auth_id RPC...");
+        console.log("   - Passing auth_id:", authData.user.id);
+        
+        const { data: rpcData, error: rpcError } = await supabase.rpc("get_user_by_auth_id", {
+          p_auth_id: authData.user.id,
+        });
+
+        console.log("8. RPC Result:");
+        console.log("   - rpcData:", rpcData);
+        console.log("   - rpcError:", rpcError);
+
+        if (rpcError) {
+          console.log("9. RPC ERROR:", rpcError.message, rpcError);
+          setError(`User profile error: ${rpcError.message}`);
+          return;
+        }
+
+        // RPC returns array, get first row
+        const rpcUserData = Array.isArray(rpcData) && rpcData.length > 0 ? rpcData[0] : rpcData;
+        console.log("9. Parsed RPC userData:", rpcUserData);
+
+        if (!rpcUserData) {
+          console.log("10. NO USER FOUND via RPC");
+          setError("User profile not found. Please contact your administrator.");
+          return;
+        }
+
+        // Store session info from RPC data
+        console.log("10. Storing session from RPC data...");
+        loginAdmin({
+          userId: rpcUserData.id,
+          email: authData.user.email || "",
+          name: rpcUserData.full_name,
+          role: rpcUserData.role,
+          orgId: rpcUserData.org_id,
+        });
+
+        // Redirect based on role
+        console.log("11. Redirecting based on role:", rpcUserData.role);
+        if (rpcUserData.role === "platform_admin") {
+          router.replace("/platform");
+        } else if (rpcUserData.role === "shop_admin" || rpcUserData.role === "supervisor") {
+          router.replace("/admin");
+        } else {
+          router.replace("/dashboard");
+        }
+        return;
+      }
+
+      if (!userData) {
+        console.log("7. NO USER DATA from direct query");
         setError("User profile not found. Please contact your administrator.");
         return;
       }
 
+      console.log("7. User profile found:", userData);
+
       // Store session info
+      console.log("8. Storing session info...");
       loginAdmin({
         userId: userData.id,
         email: authData.user.email || "",
@@ -168,6 +243,7 @@ export default function EmployeeLoginPage() {
       });
 
       // Redirect based on role
+      console.log("9. Redirecting based on role:", userData.role);
       if (userData.role === "platform_admin") {
         router.replace("/platform");
       } else if (userData.role === "shop_admin" || userData.role === "supervisor") {
@@ -176,10 +252,17 @@ export default function EmployeeLoginPage() {
         router.replace("/dashboard");
       }
     } catch (err) {
-      console.error("Login error:", err);
+      console.error("=== CATCH BLOCK ERROR ===");
+      console.error("Error type:", typeof err);
+      console.error("Error:", err);
+      if (err instanceof Error) {
+        console.error("Error message:", err.message);
+        console.error("Error stack:", err.stack);
+      }
       setError("An unexpected error occurred. Please try again.");
     } finally {
       setLoading(false);
+      console.log("=== Login attempt finished ===");
     }
   };
 
