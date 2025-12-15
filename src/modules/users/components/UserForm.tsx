@@ -184,8 +184,8 @@ export function UserForm({ orgId, user, departments, onSuccess, onCancel }: User
         setError('Full name is required');
         return;
       }
-      if (!password || password.length < 6) {
-        setError('Password must be at least 6 characters');
+      if (!password || password.length < 8) {
+        setError('Password must be at least 8 characters');
         return;
       }
     }
@@ -365,7 +365,7 @@ export function UserForm({ orgId, user, departments, onSuccess, onCancel }: User
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Minimum 6 characters"
+                placeholder="Minimum 8 characters"
                 style={s.input}
                 onFocus={(e) => {
                   e.currentTarget.style.borderColor = '#3b82f6';

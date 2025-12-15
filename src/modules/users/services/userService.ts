@@ -123,12 +123,65 @@ export async function getUser(userId: string): Promise<User | null> {
 }
 
 /**
- * Create a new user
+ * Create a new user with Supabase Auth
  */
 export async function createUser(
   input: CreateUserInput
 ): Promise<{ success: boolean; userId?: string; error?: string }> {
-  // First, hash the password using the database function
+  console.log('=== createUser Debug ===');
+  console.log('Creating user with email:', input.email);
+  console.log('input.orgId:', input.orgId);
+  console.log('input.departmentId:', input.departmentId);
+
+  // Step 1: Create Supabase Auth user via admin API (using service role or RPC)
+  // Since we can't use admin API from client, we'll use an RPC function
+  const { data: authResult, error: authError } = await supabase.rpc('create_auth_user', {
+    p_email: input.email,
+    p_password: input.password,
+    p_full_name: input.fullName,
+    p_org_id: input.orgId,
+    p_role: input.role,
+    p_department_id: input.departmentId || null,
+    p_hourly_rate: input.hourlyRate ?? 35.00,
+  });
+
+  if (authError) {
+    console.error('Error creating auth user:', authError);
+    // Fallback to legacy method if RPC doesn't exist
+    if (authError.code === '42883' || authError.message?.includes('does not exist')) {
+      console.log('RPC not found, falling back to legacy user creation');
+      return createUserLegacy(input);
+    }
+    if (authError.message?.includes('already registered') || authError.message?.includes('already exists')) {
+      return { success: false, error: 'A user with this email already exists' };
+    }
+    return { success: false, error: authError.message };
+  }
+
+  console.log('Auth user created:', authResult);
+  console.log('========================');
+
+  // Handle JSON response from RPC
+  if (authResult && typeof authResult === 'object') {
+    if (authResult.success === false) {
+      return { success: false, error: authResult.error || 'Failed to create user' };
+    }
+    return { success: true, userId: authResult.user_id };
+  }
+
+  // Fallback for simple return value
+  const userId = authResult?.user_id || authResult?.id || authResult;
+  return { success: true, userId };
+}
+
+/**
+ * Legacy user creation (without Supabase Auth)
+ * Used as fallback if create_auth_user RPC doesn't exist
+ */
+async function createUserLegacy(
+  input: CreateUserInput
+): Promise<{ success: boolean; userId?: string; error?: string }> {
+  // Hash the password using the database function
   const { data: hashData, error: hashError } = await supabase.rpc('hash_password', {
     password: input.password,
   });
@@ -155,14 +208,6 @@ export async function createUser(
     created_at: now,
     updated_at: now,
   };
-
-  // Debug logging
-  console.log('=== createUser Debug ===');
-  console.log('Generated userId:', userId);
-  console.log('input.orgId:', input.orgId);
-  console.log('input.departmentId:', input.departmentId);
-  console.log('Full insert payload:', JSON.stringify(insertPayload, null, 2));
-  console.log('========================');
 
   // Insert the user
   const { data, error } = await supabase
