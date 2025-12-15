@@ -8,7 +8,7 @@ import { useAuth } from "@/hooks/useAuth";
 interface Stage {
   id: string;
   name: string;
-  sort_order: number;
+  order_index: number;
   color: string;
   is_terminal: boolean;
 }
@@ -312,10 +312,10 @@ export default function StagesPage() {
     
     const { data } = await supabase
       .from("stages")
-      .select("id, name, sort_order, color, is_terminal")
+      .select("id, name, order_index, color, is_terminal")
       .eq("org_id", orgId)
       .eq("is_active", true)
-      .order("sort_order", { ascending: true });
+      .order("order_index", { ascending: true });
     
     if (data) {
       setStages(data.map(d => ({
@@ -336,12 +336,12 @@ export default function StagesPage() {
     const orgId = session?.orgId || session?.shopId;
     if (!newName.trim() || !orgId) return;
     
-    const maxOrder = stages.length > 0 ? Math.max(...stages.map((s) => s.sort_order)) : 0;
+    const maxOrder = stages.length > 0 ? Math.max(...stages.map((s) => s.order_index)) : 0;
     
     await supabase.from("stages").insert({
       org_id: orgId,
       name: newName.trim(),
-      sort_order: maxOrder + 1,
+      order_index: maxOrder + 1,
       color: newColor,
       is_terminal: newIsTerminal,
     });
@@ -387,8 +387,8 @@ export default function StagesPage() {
     const swap = stages[swapIndex];
 
     await Promise.all([
-      supabase.from("stages").update({ sort_order: swap.sort_order }).eq("id", current.id),
-      supabase.from("stages").update({ sort_order: current.sort_order }).eq("id", swap.id),
+      supabase.from("stages").update({ order_index: swap.order_index }).eq("id", current.id),
+      supabase.from("stages").update({ order_index: current.order_index }).eq("id", swap.id),
     ]);
     fetchStages();
   };
