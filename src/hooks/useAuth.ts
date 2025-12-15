@@ -76,9 +76,11 @@ export function useAuth() {
     const initAuth = async () => {
       // First check localStorage for existing session (backward compat)
       const raw = window.localStorage.getItem(STORAGE_KEY);
+      console.log('[useAuth] initAuth - localStorage raw:', raw);
       if (raw) {
         try {
           const parsed = JSON.parse(raw) as Session;
+          console.log('[useAuth] initAuth - parsed session from localStorage:', parsed);
           if (mounted) setSession(parsed);
         } catch {
           window.localStorage.removeItem(STORAGE_KEY);
@@ -87,9 +89,21 @@ export function useAuth() {
 
       // Then check Supabase Auth session
       const { data: { session: authSession } } = await supabase.auth.getSession();
+      console.log('[useAuth] initAuth - Supabase auth session:', authSession?.user?.id);
       
       if (authSession?.user) {
+        // IMPORTANT: If we already have a valid session in localStorage with an orgId,
+        // don't overwrite it - the user may have switched org context via loginAdmin
+        const existingSession = raw ? JSON.parse(raw) as Session : null;
+        if (existingSession?.isAuthenticated && existingSession?.orgId) {
+          console.log('[useAuth] initAuth - Keeping existing session with orgId:', existingSession.orgId);
+          // Just update loading state, don't overwrite session
+          if (mounted) setLoading(false);
+          return;
+        }
+        
         const userData = await fetchUserData(authSession.user);
+        console.log('[useAuth] initAuth - fetched userData from DB:', userData);
         if (userData && mounted) {
           setSession(userData);
           window.localStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
@@ -161,6 +175,8 @@ export function useAuth() {
     role: UserRole;
   }) => {
     const orgId = data.orgId || data.shopId || '';
+    console.log('[useAuth] loginAdmin called with orgId:', orgId);
+    console.log('[useAuth] loginAdmin full data:', data);
     const next: Session = {
       isAuthenticated: true,
       orgId,
@@ -170,9 +186,11 @@ export function useAuth() {
       email: data.email,
       name: data.name,
     };
+    console.log('[useAuth] Setting new session:', next);
     setSession(next);
     if (typeof window !== "undefined") {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      console.log('[useAuth] localStorage updated, stored:', window.localStorage.getItem(STORAGE_KEY));
     }
   };
 

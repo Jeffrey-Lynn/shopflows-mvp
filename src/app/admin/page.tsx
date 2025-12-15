@@ -217,12 +217,16 @@ export default function AdminDashboard() {
   }, [authLoading, session, isAdmin, router]);
 
   useEffect(() => {
+    console.log('[AdminDashboard] useEffect triggered, session.orgId:', session?.orgId);
+    console.log('[AdminDashboard] Full session:', session);
     const fetchData = async () => {
       if (!session?.orgId) {
+        console.log('[AdminDashboard] No orgId in session, skipping fetch');
         setLoading(false);
         return;
       }
 
+      console.log('[AdminDashboard] Fetching data for orgId:', session.orgId);
       try {
         // Fetch org name
         const { data: orgData } = await supabase

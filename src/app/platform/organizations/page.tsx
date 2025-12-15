@@ -552,6 +552,8 @@ export default function OrganizationsPage() {
   }, []);
 
   const handleManageOrg = (org: Organization) => {
+    console.log('[Organizations] handleManageOrg called for org:', org.id, org.name);
+    console.log('[Organizations] Current session before loginAdmin:', session);
     // Update session to set this org as active context
     loginAdmin({
       orgId: org.id,
@@ -560,6 +562,7 @@ export default function OrganizationsPage() {
       name: session?.name || "",
       role: "platform_admin",
     });
+    console.log('[Organizations] loginAdmin called, navigating to /admin');
     // Navigate to admin dashboard for this org
     router.push("/admin");
   };
