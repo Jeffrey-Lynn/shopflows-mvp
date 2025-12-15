@@ -5,11 +5,26 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/hooks/useAuth";
 
-interface Location {
+interface Stage {
   id: string;
   name: string;
   sort_order: number;
+  color: string;
+  is_terminal: boolean;
 }
+
+const PRESET_COLORS = [
+  "#3b82f6", // blue
+  "#10b981", // green
+  "#f59e0b", // amber
+  "#ef4444", // red
+  "#8b5cf6", // purple
+  "#ec4899", // pink
+  "#06b6d4", // cyan
+  "#84cc16", // lime
+  "#f97316", // orange
+  "#6366f1", // indigo
+];
 
 const s = {
   page: {
@@ -74,8 +89,14 @@ const s = {
   },
   addForm: {
     display: "flex",
+    flexDirection: "column" as const,
     gap: "12px",
     marginBottom: "24px",
+  },
+  formRow: {
+    display: "flex",
+    gap: "12px",
+    alignItems: "center",
   },
   input: {
     flex: 1,
@@ -100,7 +121,37 @@ const s = {
     cursor: "pointer",
     whiteSpace: "nowrap" as const,
   } as React.CSSProperties,
-  locationItem: {
+  colorPicker: {
+    display: "flex",
+    gap: "6px",
+    flexWrap: "wrap" as const,
+  },
+  colorSwatch: {
+    width: "32px",
+    height: "32px",
+    borderRadius: "6px",
+    cursor: "pointer",
+    border: "2px solid transparent",
+    transition: "all 0.15s ease",
+  } as React.CSSProperties,
+  colorSwatchSelected: {
+    border: "2px solid #ffffff",
+    transform: "scale(1.1)",
+  },
+  checkbox: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    fontSize: "14px",
+    color: "#999999",
+    cursor: "pointer",
+  },
+  checkboxInput: {
+    width: "18px",
+    height: "18px",
+    cursor: "pointer",
+  },
+  stageItem: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
@@ -108,19 +159,32 @@ const s = {
     backgroundColor: "#0a0a0a",
     borderRadius: "10px",
     marginBottom: "8px",
-    border: "1px solid #2a2a2a",
+    borderLeft: "4px solid",
   },
-  locationName: {
+  stageInfo: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+  },
+  stageName: {
     fontSize: "15px",
     fontWeight: 500,
     color: "#ffffff",
   },
-  locationOrder: {
+  stageOrder: {
     fontSize: "12px",
     color: "#666666",
-    marginLeft: "8px",
   },
-  locationActions: {
+  terminalBadge: {
+    fontSize: "10px",
+    fontWeight: 600,
+    padding: "3px 8px",
+    borderRadius: "4px",
+    backgroundColor: "rgba(16, 185, 129, 0.15)",
+    color: "#10b981",
+    textTransform: "uppercase" as const,
+  },
+  stageActions: {
     display: "flex",
     gap: "8px",
   },
@@ -178,6 +242,16 @@ const s = {
     color: "#ffffff",
     marginBottom: "16px",
   },
+  modalField: {
+    marginBottom: "16px",
+  },
+  modalLabel: {
+    fontSize: "12px",
+    fontWeight: 500,
+    color: "#666666",
+    marginBottom: "8px",
+    display: "block",
+  },
   modalActions: {
     display: "flex",
     gap: "12px",
@@ -207,14 +281,23 @@ const s = {
   } as React.CSSProperties,
 };
 
-export default function LocationsPage() {
+export default function StagesPage() {
   const router = useRouter();
   const { session, loading: authLoading, isAdmin, logout } = useAuth();
-  const [locations, setLocations] = useState<Location[]>([]);
+  const [stages, setStages] = useState<Stage[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Add form state
   const [newName, setNewName] = useState("");
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [newColor, setNewColor] = useState(PRESET_COLORS[0]);
+  const [newIsTerminal, setNewIsTerminal] = useState(false);
+  
+  // Edit modal state
+  const [editingStage, setEditingStage] = useState<Stage | null>(null);
   const [editName, setEditName] = useState("");
+  const [editColor, setEditColor] = useState("");
+  const [editIsTerminal, setEditIsTerminal] = useState(false);
+  
   const [showDeleteModal, setShowDeleteModal] = useState<string | null>(null);
 
   useEffect(() => {
@@ -223,64 +306,98 @@ export default function LocationsPage() {
     }
   }, [authLoading, session, isAdmin, router]);
 
-  const fetchLocations = async () => {
-    if (!session?.shopId) return;
+  const fetchStages = async () => {
+    const orgId = session?.orgId || session?.shopId;
+    if (!orgId) return;
+    
     const { data } = await supabase
-      .from("locations")
-      .select("id, name, sort_order")
-      .eq("shop_id", session.shopId)
+      .from("stages")
+      .select("id, name, sort_order, color, is_terminal")
+      .eq("org_id", orgId)
+      .eq("is_active", true)
       .order("sort_order", { ascending: true });
-    if (data) setLocations(data);
+    
+    if (data) {
+      setStages(data.map(d => ({
+        ...d,
+        color: d.color || "#3b82f6",
+        is_terminal: d.is_terminal || false,
+      })));
+    }
     setLoading(false);
   };
 
   useEffect(() => {
-    if (session?.shopId) fetchLocations();
-  }, [session?.shopId]);
+    const orgId = session?.orgId || session?.shopId;
+    if (orgId) fetchStages();
+  }, [session?.orgId, session?.shopId]);
 
   const handleAdd = async () => {
-    if (!newName.trim() || !session?.shopId) return;
-    const maxOrder = locations.length > 0 ? Math.max(...locations.map((l) => l.sort_order)) : 0;
-    await supabase.from("locations").insert({
-      shop_id: session.shopId,
+    const orgId = session?.orgId || session?.shopId;
+    if (!newName.trim() || !orgId) return;
+    
+    const maxOrder = stages.length > 0 ? Math.max(...stages.map((s) => s.sort_order)) : 0;
+    
+    await supabase.from("stages").insert({
+      org_id: orgId,
       name: newName.trim(),
       sort_order: maxOrder + 1,
+      color: newColor,
+      is_terminal: newIsTerminal,
     });
+    
     setNewName("");
-    fetchLocations();
+    setNewColor(PRESET_COLORS[0]);
+    setNewIsTerminal(false);
+    fetchStages();
   };
 
   const handleEdit = async () => {
-    if (!editingId || !editName.trim()) return;
+    if (!editingStage || !editName.trim()) return;
+    
     await supabase
-      .from("locations")
-      .update({ name: editName.trim() })
-      .eq("id", editingId);
-    setEditingId(null);
-    setEditName("");
-    fetchLocations();
+      .from("stages")
+      .update({ 
+        name: editName.trim(),
+        color: editColor,
+        is_terminal: editIsTerminal,
+      })
+      .eq("id", editingStage.id);
+    
+    setEditingStage(null);
+    fetchStages();
   };
 
   const handleDelete = async (id: string) => {
-    await supabase.from("locations").delete().eq("id", id);
+    await supabase
+      .from("stages")
+      .update({ is_active: false })
+      .eq("id", id);
     setShowDeleteModal(null);
-    fetchLocations();
+    fetchStages();
   };
 
   const handleMove = async (id: string, direction: "up" | "down") => {
-    const index = locations.findIndex((l) => l.id === id);
+    const index = stages.findIndex((s) => s.id === id);
     if (index === -1) return;
     const swapIndex = direction === "up" ? index - 1 : index + 1;
-    if (swapIndex < 0 || swapIndex >= locations.length) return;
+    if (swapIndex < 0 || swapIndex >= stages.length) return;
 
-    const current = locations[index];
-    const swap = locations[swapIndex];
+    const current = stages[index];
+    const swap = stages[swapIndex];
 
     await Promise.all([
-      supabase.from("locations").update({ sort_order: swap.sort_order }).eq("id", current.id),
-      supabase.from("locations").update({ sort_order: current.sort_order }).eq("id", swap.id),
+      supabase.from("stages").update({ sort_order: swap.sort_order }).eq("id", current.id),
+      supabase.from("stages").update({ sort_order: current.sort_order }).eq("id", swap.id),
     ]);
-    fetchLocations();
+    fetchStages();
+  };
+
+  const openEditModal = (stage: Stage) => {
+    setEditingStage(stage);
+    setEditName(stage.name);
+    setEditColor(stage.color);
+    setEditIsTerminal(stage.is_terminal);
   };
 
   const handleLogout = () => {
@@ -298,7 +415,7 @@ export default function LocationsPage() {
         <span style={s.logo}>SHOPFLOWS ADMIN</span>
         <nav style={s.nav}>
           <a href="/admin" style={s.navBtn}>Dashboard</a>
-          <a href="/admin/locations" style={{ ...s.navBtn, ...s.navBtnActive }}>Locations</a>
+          <a href="/admin/locations" style={{ ...s.navBtn, ...s.navBtnActive }}>Stages</a>
           <a href="/admin/devices" style={s.navBtn}>Devices</a>
           <button onClick={handleLogout} style={{ ...s.navBtn, color: "#ef4444", borderColor: "#ef4444" }}>
             Logout
@@ -306,61 +423,94 @@ export default function LocationsPage() {
         </nav>
       </header>
 
-      <h1 style={s.title}>Manage Locations</h1>
-      <p style={s.subtitle}>Add, edit, and reorder your shop locations</p>
+      <h1 style={s.title}>Workflow Stages</h1>
+      <p style={s.subtitle}>Define the stages jobs move through in your workflow</p>
 
       <div style={s.card}>
+        {/* Add Stage Form */}
         <div style={s.addForm}>
-          <input
-            type="text"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            placeholder="New location name"
-            style={s.input}
-            onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-          />
-          <button onClick={handleAdd} style={s.addBtn}>
-            Add Location
-          </button>
+          <div style={s.formRow}>
+            <input
+              type="text"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="New stage name"
+              style={s.input}
+              onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+            />
+            <button onClick={handleAdd} style={s.addBtn}>
+              Add Stage
+            </button>
+          </div>
+          
+          <div style={s.formRow}>
+            <div style={s.colorPicker}>
+              {PRESET_COLORS.map((color) => (
+                <div
+                  key={color}
+                  onClick={() => setNewColor(color)}
+                  style={{
+                    ...s.colorSwatch,
+                    backgroundColor: color,
+                    ...(newColor === color ? s.colorSwatchSelected : {}),
+                  }}
+                />
+              ))}
+            </div>
+            
+            <label style={s.checkbox}>
+              <input
+                type="checkbox"
+                checked={newIsTerminal}
+                onChange={(e) => setNewIsTerminal(e.target.checked)}
+                style={s.checkboxInput}
+              />
+              Terminal Stage (marks jobs complete)
+            </label>
+          </div>
         </div>
 
+        {/* Stages List */}
         {loading ? (
-          <div style={s.emptyState}>Loading locations...</div>
-        ) : locations.length === 0 ? (
-          <div style={s.emptyState}>No locations yet. Add your first location above.</div>
+          <div style={s.emptyState}>Loading stages...</div>
+        ) : stages.length === 0 ? (
+          <div style={s.emptyState}>No stages yet. Add your first stage above.</div>
         ) : (
-          locations.map((location, index) => (
-            <div key={location.id} style={s.locationItem}>
-              <div style={{ display: "flex", alignItems: "center" }}>
-                <span style={s.locationName}>{location.name}</span>
-                <span style={s.locationOrder}>#{index + 1}</span>
+          stages.map((stage, index) => (
+            <div 
+              key={stage.id} 
+              style={{ ...s.stageItem, borderLeftColor: stage.color }}
+            >
+              <div style={s.stageInfo}>
+                <span style={s.stageName}>{stage.name}</span>
+                <span style={s.stageOrder}>#{index + 1}</span>
+                {stage.is_terminal && (
+                  <span style={s.terminalBadge}>Done</span>
+                )}
               </div>
-              <div style={s.locationActions}>
+              <div style={s.stageActions}>
                 <button
-                  onClick={() => handleMove(location.id, "up")}
+                  onClick={() => handleMove(stage.id, "up")}
                   disabled={index === 0}
                   style={{ ...s.actionBtn, ...s.moveBtn, opacity: index === 0 ? 0.3 : 1 }}
                 >
                   ↑
                 </button>
                 <button
-                  onClick={() => handleMove(location.id, "down")}
-                  disabled={index === locations.length - 1}
-                  style={{ ...s.actionBtn, ...s.moveBtn, opacity: index === locations.length - 1 ? 0.3 : 1 }}
+                  onClick={() => handleMove(stage.id, "down")}
+                  disabled={index === stages.length - 1}
+                  style={{ ...s.actionBtn, ...s.moveBtn, opacity: index === stages.length - 1 ? 0.3 : 1 }}
                 >
                   ↓
                 </button>
                 <button
-                  onClick={() => {
-                    setEditingId(location.id);
-                    setEditName(location.name);
-                  }}
+                  onClick={() => openEditModal(stage)}
                   style={{ ...s.actionBtn, ...s.editBtn }}
                 >
                   Edit
                 </button>
                 <button
-                  onClick={() => setShowDeleteModal(location.id)}
+                  onClick={() => setShowDeleteModal(stage.id)}
                   style={{ ...s.actionBtn, ...s.deleteBtn }}
                 >
                   Delete
@@ -372,19 +522,53 @@ export default function LocationsPage() {
       </div>
 
       {/* Edit Modal */}
-      {editingId && (
-        <div style={s.modal} onClick={() => setEditingId(null)}>
+      {editingStage && (
+        <div style={s.modal} onClick={() => setEditingStage(null)}>
           <div style={s.modalContent} onClick={(e) => e.stopPropagation()}>
-            <h3 style={s.modalTitle}>Edit Location</h3>
-            <input
-              type="text"
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              style={{ ...s.input, width: "100%", marginBottom: "0" }}
-              autoFocus
-            />
+            <h3 style={s.modalTitle}>Edit Stage</h3>
+            
+            <div style={s.modalField}>
+              <label style={s.modalLabel}>Stage Name</label>
+              <input
+                type="text"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                style={{ ...s.input, width: "100%" }}
+                autoFocus
+              />
+            </div>
+            
+            <div style={s.modalField}>
+              <label style={s.modalLabel}>Color</label>
+              <div style={s.colorPicker}>
+                {PRESET_COLORS.map((color) => (
+                  <div
+                    key={color}
+                    onClick={() => setEditColor(color)}
+                    style={{
+                      ...s.colorSwatch,
+                      backgroundColor: color,
+                      ...(editColor === color ? s.colorSwatchSelected : {}),
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+            
+            <div style={s.modalField}>
+              <label style={s.checkbox}>
+                <input
+                  type="checkbox"
+                  checked={editIsTerminal}
+                  onChange={(e) => setEditIsTerminal(e.target.checked)}
+                  style={s.checkboxInput}
+                />
+                Terminal Stage (marks jobs complete)
+              </label>
+            </div>
+            
             <div style={s.modalActions}>
-              <button onClick={() => setEditingId(null)} style={s.cancelBtn}>
+              <button onClick={() => setEditingStage(null)} style={s.cancelBtn}>
                 Cancel
               </button>
               <button onClick={handleEdit} style={s.confirmBtn}>
@@ -399,9 +583,9 @@ export default function LocationsPage() {
       {showDeleteModal && (
         <div style={s.modal} onClick={() => setShowDeleteModal(null)}>
           <div style={s.modalContent} onClick={(e) => e.stopPropagation()}>
-            <h3 style={s.modalTitle}>Delete Location?</h3>
+            <h3 style={s.modalTitle}>Delete Stage?</h3>
             <p style={{ color: "#999999", fontSize: "14px" }}>
-              This will remove the location. Vehicles at this location will show &quot;No location&quot;.
+              This will hide the stage. Jobs at this stage will keep their current stage until moved.
             </p>
             <div style={s.modalActions}>
               <button onClick={() => setShowDeleteModal(null)} style={s.cancelBtn}>

@@ -12,10 +12,20 @@ export interface JobItemCardProps {
   id: string;
   identifier: string;
   currentStageName: string | null;
+  currentStageColor?: string;
+  priority?: 'low' | 'medium' | 'high' | 'urgent';
+  assignedUsers?: { id: string; name: string }[];
   updatedAt: string | null;
   /** If true, clicking the card navigates to job detail page */
   clickable?: boolean;
 }
+
+const PRIORITY_CONFIG = {
+  low: { label: 'Low', color: '#666666', bg: 'rgba(102, 102, 102, 0.15)' },
+  medium: { label: 'Med', color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.15)' },
+  high: { label: 'High', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)' },
+  urgent: { label: 'Urgent', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.15)' },
+};
 
 const styles = {
   card: {
@@ -26,6 +36,7 @@ const styles = {
     backgroundColor: '#1a1a1a',
     borderRadius: '12px',
     border: '1px solid #2a2a2a',
+    borderLeft: '4px solid #3b82f6',
     marginBottom: '8px',
     transition: 'all 0.2s ease',
     cursor: 'pointer',
@@ -74,6 +85,40 @@ const styles = {
     fontSize: '11px',
     color: '#666666',
   },
+  priorityBadge: {
+    display: 'inline-block',
+    padding: '3px 8px',
+    borderRadius: '4px',
+    fontSize: '10px',
+    fontWeight: 600,
+    marginLeft: '8px',
+  },
+  userAvatars: {
+    display: 'flex',
+    gap: '2px',
+    marginTop: '4px',
+  },
+  avatar: {
+    width: '20px',
+    height: '20px',
+    borderRadius: '50%',
+    backgroundColor: '#3b82f6',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '9px',
+    fontWeight: 600,
+    color: '#ffffff',
+  },
+  moreAvatar: {
+    backgroundColor: '#2a2a2a',
+    color: '#888888',
+  },
+  headerRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '4px',
+  },
 };
 
 function formatDuration(from: Date, to: Date): string {
@@ -88,12 +133,26 @@ function formatDuration(from: Date, to: Date): string {
   return `${diffDays}d ${diffHours % 24}h`;
 }
 
-export function JobItemCard({ id, identifier, currentStageName, updatedAt, clickable = true }: JobItemCardProps) {
+export function JobItemCard({ 
+  id, 
+  identifier, 
+  currentStageName, 
+  currentStageColor = '#3b82f6',
+  priority = 'medium',
+  assignedUsers = [],
+  updatedAt, 
+  clickable = true 
+}: JobItemCardProps) {
   const router = useRouter();
   const terminology = useTerminology();
   const now = new Date();
   const updatedAtDate = updatedAt ? new Date(updatedAt) : null;
   const duration = updatedAtDate ? formatDuration(updatedAtDate, now) : '-';
+  const priorityConfig = PRIORITY_CONFIG[priority];
+
+  const getInitials = (name: string) => {
+    return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  };
 
   const handleClick = () => {
     if (clickable) {
@@ -105,29 +164,54 @@ export function JobItemCard({ id, identifier, currentStageName, updatedAt, click
     <article
       style={{
         ...styles.card,
+        borderLeftColor: currentStageColor,
         cursor: clickable ? 'pointer' : 'default',
       }}
       onClick={handleClick}
       onMouseEnter={(e) => {
         if (clickable) {
-          e.currentTarget.style.borderColor = '#3b82f6';
-          e.currentTarget.style.boxShadow = '0 0 25px rgba(59, 130, 246, 0.3)';
+          e.currentTarget.style.borderColor = currentStageColor;
+          e.currentTarget.style.boxShadow = `0 0 25px ${currentStageColor}40`;
         }
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.borderColor = '#2a2a2a';
+        e.currentTarget.style.borderLeftColor = currentStageColor;
         e.currentTarget.style.boxShadow = 'none';
       }}
     >
       <div style={styles.info}>
-        <span style={styles.label}>{terminology.identifier}</span>
+        <div style={styles.headerRow}>
+          <span style={styles.label}>{terminology.identifier}</span>
+          <span style={{
+            ...styles.priorityBadge,
+            backgroundColor: priorityConfig.bg,
+            color: priorityConfig.color,
+          }}>
+            {priorityConfig.label}
+          </span>
+        </div>
         <span style={styles.identifier}>{identifier}</span>
         <span style={styles.stage}>
           {terminology.stage}:{' '}
-          <span style={styles.stageValue}>
+          <span style={{ ...styles.stageValue, color: currentStageColor }}>
             {currentStageName ?? 'Not set'}
           </span>
         </span>
+        {assignedUsers.length > 0 && (
+          <div style={styles.userAvatars}>
+            {assignedUsers.slice(0, 3).map(user => (
+              <div key={user.id} style={styles.avatar} title={user.name}>
+                {getInitials(user.name)}
+              </div>
+            ))}
+            {assignedUsers.length > 3 && (
+              <div style={{ ...styles.avatar, ...styles.moreAvatar }}>
+                +{assignedUsers.length - 3}
+              </div>
+            )}
+          </div>
+        )}
       </div>
       <div style={styles.right}>
         <span style={styles.timeBadge}>{duration} in {terminology.stage.toLowerCase()}</span>

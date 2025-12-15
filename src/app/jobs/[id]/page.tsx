@@ -17,12 +17,58 @@ import { JobMaterialsList } from '@/modules/inventory/components/JobMaterialsLis
 
 interface JobDetail {
   id: string;
-  vin_last_8: string;
-  current_location_id: string | null;
-  current_location_name: string | null;
+  identifier: string;
+  description: string | null;
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  due_date: string | null;
+  estimated_hours: number | null;
+  actual_hours: number | null;
+  completed_at: string | null;
+  current_stage: {
+    id: string;
+    name: string;
+    color: string;
+    is_terminal: boolean;
+  } | null;
+  assignments: {
+    id: string;
+    user_id: string;
+    user_name: string;
+    role: string;
+    assigned_at: string;
+  }[];
+  stage_history: {
+    id: string;
+    from_stage_name: string | null;
+    from_stage_color: string | null;
+    to_stage_name: string;
+    to_stage_color: string;
+    changed_by_name: string | null;
+    changed_at: string;
+    notes: string | null;
+  }[];
   created_at: string;
   updated_at: string;
 }
+
+interface Stage {
+  id: string;
+  name: string;
+  color: string;
+  is_terminal: boolean;
+}
+
+interface OrgUser {
+  id: string;
+  full_name: string;
+}
+
+const PRIORITY_CONFIG = {
+  low: { label: 'Low', color: '#666666', bg: 'rgba(102, 102, 102, 0.15)' },
+  medium: { label: 'Medium', color: '#3b82f6', bg: 'rgba(59, 130, 246, 0.15)' },
+  high: { label: 'High', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)' },
+  urgent: { label: 'Urgent', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.15)' },
+};
 
 // =============================================================================
 // Styles
@@ -146,6 +192,160 @@ const styles = {
     gridTemplateColumns: '1fr',
     gap: '20px',
   } as React.CSSProperties,
+  stageSelect: {
+    height: '40px',
+    borderRadius: '8px',
+    backgroundColor: '#0a0a0a',
+    border: '1px solid #2a2a2a',
+    padding: '0 12px',
+    fontSize: '14px',
+    color: '#ffffff',
+    outline: 'none',
+    cursor: 'pointer',
+    flex: 1,
+  } as React.CSSProperties,
+  stageChangeBtn: {
+    height: '40px',
+    padding: '0 16px',
+    borderRadius: '8px',
+    backgroundColor: '#3b82f6',
+    border: 'none',
+    color: '#ffffff',
+    fontSize: '13px',
+    fontWeight: 600,
+    cursor: 'pointer',
+  } as React.CSSProperties,
+  assignmentList: {
+    display: 'flex',
+    flexWrap: 'wrap' as const,
+    gap: '8px',
+  },
+  assignmentBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '6px',
+    padding: '6px 12px',
+    borderRadius: '20px',
+    backgroundColor: 'rgba(59, 130, 246, 0.15)',
+    color: '#3b82f6',
+    fontSize: '13px',
+    fontWeight: 500,
+  },
+  removeBtn: {
+    width: '16px',
+    height: '16px',
+    borderRadius: '50%',
+    backgroundColor: 'rgba(239, 68, 68, 0.3)',
+    border: 'none',
+    color: '#ef4444',
+    fontSize: '12px',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  } as React.CSSProperties,
+  historyItem: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: '12px',
+    padding: '12px 0',
+    borderBottom: '1px solid #2a2a2a',
+  },
+  historyDot: {
+    width: '10px',
+    height: '10px',
+    borderRadius: '50%',
+    marginTop: '4px',
+    flexShrink: 0,
+  },
+  historyContent: {
+    flex: 1,
+  },
+  historyText: {
+    fontSize: '14px',
+    color: '#ffffff',
+    marginBottom: '4px',
+  },
+  historyMeta: {
+    fontSize: '12px',
+    color: '#666666',
+  },
+  priorityBadge: {
+    display: 'inline-block',
+    padding: '4px 10px',
+    borderRadius: '6px',
+    fontSize: '12px',
+    fontWeight: 600,
+  },
+  addUserBtn: {
+    padding: '6px 12px',
+    borderRadius: '6px',
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    border: 'none',
+    color: '#10b981',
+    fontSize: '12px',
+    fontWeight: 500,
+    cursor: 'pointer',
+  } as React.CSSProperties,
+  modal: {
+    position: 'fixed' as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+    padding: '20px',
+  },
+  modalContent: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: '16px',
+    padding: '24px',
+    width: '100%',
+    maxWidth: '400px',
+    border: '1px solid #2a2a2a',
+  },
+  modalTitle: {
+    fontSize: '18px',
+    fontWeight: 600,
+    color: '#ffffff',
+    marginBottom: '16px',
+  },
+  userList: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: '8px',
+    maxHeight: '300px',
+    overflowY: 'auto' as const,
+  },
+  userItem: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '10px 12px',
+    borderRadius: '8px',
+    backgroundColor: '#0a0a0a',
+    cursor: 'pointer',
+  } as React.CSSProperties,
+  modalActions: {
+    display: 'flex',
+    gap: '12px',
+    marginTop: '20px',
+  },
+  cancelBtn: {
+    flex: 1,
+    height: '44px',
+    borderRadius: '10px',
+    backgroundColor: 'transparent',
+    border: '1px solid #2a2a2a',
+    color: '#999999',
+    fontSize: '14px',
+    fontWeight: 500,
+    cursor: 'pointer',
+  } as React.CSSProperties,
 };
 
 // =============================================================================
@@ -187,8 +387,13 @@ export default function JobDetailPage() {
   const terminology = useTerminology();
   
   const [job, setJob] = useState<JobDetail | null>(null);
+  const [stages, setStages] = useState<Stage[]>([]);
+  const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedStageId, setSelectedStageId] = useState('');
+  const [changingStage, setChangingStage] = useState(false);
+  const [showAssignModal, setShowAssignModal] = useState(false);
 
   // Ref to hold the labor entries refresh function (must be before any early returns)
   const refreshEntriesRef = useRef<(() => Promise<void>) | null>(null);
@@ -210,9 +415,49 @@ export default function JobDetailPage() {
     }
   }, [authLoading, session, router]);
 
-  // Fetch job data
+  // Fetch job data using RPC
+  const fetchJobDetails = useCallback(async () => {
+    if (!jobId) return;
+    
+    try {
+      const { data, error: rpcError } = await supabase.rpc('get_job_details', {
+        p_job_id: jobId,
+      });
+
+      if (rpcError) throw rpcError;
+      if (!data) {
+        setError(`${terminology.item} not found`);
+        return;
+      }
+
+      setJob({
+        id: data.id,
+        identifier: data.identifier?.slice(-8) || 'N/A',
+        description: data.description,
+        priority: data.priority || 'medium',
+        due_date: data.due_date,
+        estimated_hours: data.estimated_hours,
+        actual_hours: data.actual_hours,
+        completed_at: data.completed_at,
+        current_stage: data.current_stage,
+        assignments: data.assignments || [],
+        stage_history: data.stage_history || [],
+        created_at: data.created_at,
+        updated_at: data.updated_at,
+      });
+
+      if (data.current_stage?.id) {
+        setSelectedStageId(data.current_stage.id);
+      }
+    } catch (err) {
+      console.error('Failed to fetch job:', err);
+      setError('Failed to load job details');
+    }
+  }, [jobId, terminology.item]);
+
+  // Fetch stages and users
   useEffect(() => {
-    const fetchJob = async () => {
+    const fetchData = async () => {
       const orgId = session?.orgId || session?.shopId;
       if (!jobId || !orgId) return;
       
@@ -220,48 +465,101 @@ export default function JobDetailPage() {
       setError(null);
       
       try {
-        // Fetch job (updated for new schema)
-        const { data: jobData, error: jobError } = await supabase
-          .from('vehicles')
-          .select(`
-            id,
-            vin,
-            current_stage_id,
-            created_at,
-            updated_at
-          `)
-          .eq('id', jobId)
+        // Fetch stages
+        const { data: stagesData } = await supabase
+          .from('stages')
+          .select('id, name, color, is_terminal')
           .eq('org_id', orgId)
-          .single();
+          .eq('is_active', true)
+          .order('sort_order', { ascending: true });
 
-        if (jobError) {
-          if (jobError.code === 'PGRST116') {
-            setError(`${terminology.item} not found`);
-          } else {
-            throw jobError;
-          }
-          return;
-        }
+        setStages((stagesData ?? []).map(s => ({
+          ...s,
+          color: s.color || '#3b82f6',
+          is_terminal: s.is_terminal || false,
+        })));
 
-        // Map to JobDetail format
-        setJob({
-          id: jobData.id,
-          vin_last_8: jobData.vin?.slice(-8) || 'N/A',
-          current_location_id: jobData.current_stage_id,
-          current_location_name: 'In Progress', // TODO: Fetch stage name
-          created_at: jobData.created_at,
-          updated_at: jobData.updated_at,
-        });
+        // Fetch org users
+        const { data: usersData } = await supabase
+          .from('users')
+          .select('id, full_name')
+          .eq('org_id', orgId)
+          .eq('is_active', true)
+          .order('full_name', { ascending: true });
+
+        setOrgUsers(usersData ?? []);
+
+        // Fetch job details
+        await fetchJobDetails();
       } catch (err) {
-        console.error('Failed to fetch job:', err);
+        console.error('Failed to fetch data:', err);
         setError('Failed to load job details');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchJob();
-  }, [jobId, terminology.item, session?.orgId, session?.shopId]);
+    fetchData();
+  }, [jobId, session?.orgId, session?.shopId, fetchJobDetails]);
+
+  const handleStageChange = async () => {
+    if (!selectedStageId || !job || selectedStageId === job.current_stage?.id) return;
+    
+    setChangingStage(true);
+    try {
+      const { data, error: rpcError } = await supabase.rpc('change_job_stage', {
+        p_job_id: jobId,
+        p_new_stage_id: selectedStageId,
+        p_user_id: session?.userId || null,
+      });
+
+      if (rpcError) throw rpcError;
+      if (!data?.success) throw new Error(data?.error || 'Failed to change stage');
+
+      await fetchJobDetails();
+    } catch (err) {
+      console.error('Failed to change stage:', err);
+      alert('Failed to change stage');
+    } finally {
+      setChangingStage(false);
+    }
+  };
+
+  const handleAssignUser = async (userId: string) => {
+    try {
+      const { error: rpcError } = await supabase.rpc('assign_user_to_job', {
+        p_job_id: jobId,
+        p_user_id: userId,
+        p_assigned_by: session?.userId || null,
+      });
+
+      if (rpcError) throw rpcError;
+      await fetchJobDetails();
+      setShowAssignModal(false);
+    } catch (err) {
+      console.error('Failed to assign user:', err);
+      alert('Failed to assign user');
+    }
+  };
+
+  const handleRemoveAssignment = async (userId: string) => {
+    try {
+      const { error: rpcError } = await supabase.rpc('remove_user_from_job', {
+        p_job_id: jobId,
+        p_user_id: userId,
+      });
+
+      if (rpcError) throw rpcError;
+      await fetchJobDetails();
+    } catch (err) {
+      console.error('Failed to remove assignment:', err);
+      alert('Failed to remove assignment');
+    }
+  };
+
+  const isAdmin = session?.role === 'platform_admin' || session?.role === 'shop_admin' || session?.role === 'supervisor';
+  const assignedUserIds = job?.assignments.map(a => a.user_id) || [];
+  const unassignedUsers = orgUsers.filter(u => !assignedUserIds.includes(u.id));
 
   // Loading state
   if (authLoading || loading) {
@@ -329,12 +627,28 @@ export default function JobDetailPage() {
           <div style={styles.infoGrid}>
             <div style={styles.infoItem}>
               <span style={styles.infoLabel}>{terminology.identifier}</span>
-              <span style={styles.infoValueMono}>{job.vin_last_8}</span>
+              <span style={styles.infoValueMono}>{job.identifier}</span>
             </div>
             <div style={styles.infoItem}>
-              <span style={styles.infoLabel}>Current {terminology.stage}</span>
-              <span style={styles.stageBadge}>
-                {job.current_location_name ?? 'Not set'}
+              <span style={styles.infoLabel}>Priority</span>
+              <span style={{
+                ...styles.priorityBadge,
+                backgroundColor: PRIORITY_CONFIG[job.priority].bg,
+                color: PRIORITY_CONFIG[job.priority].color,
+              }}>
+                {PRIORITY_CONFIG[job.priority].label}
+              </span>
+            </div>
+            <div style={styles.infoItem}>
+              <span style={styles.infoLabel}>Due Date</span>
+              <span style={styles.infoValue}>
+                {job.due_date ? new Date(job.due_date).toLocaleDateString() : '—'}
+              </span>
+            </div>
+            <div style={styles.infoItem}>
+              <span style={styles.infoLabel}>Hours (Est / Actual)</span>
+              <span style={styles.infoValue}>
+                {job.estimated_hours ?? '—'} / {job.actual_hours ?? '0'}
               </span>
             </div>
             <div style={styles.infoItem}>
@@ -348,7 +662,122 @@ export default function JobDetailPage() {
               </span>
             </div>
           </div>
+          {job.description && (
+            <div style={{ marginTop: '16px' }}>
+              <span style={styles.infoLabel}>Description</span>
+              <p style={{ color: '#999999', fontSize: '14px', margin: '4px 0 0 0' }}>
+                {job.description}
+              </p>
+            </div>
+          )}
         </div>
+
+        {/* Stage Change Card */}
+        <div style={styles.card}>
+          <h2 style={styles.cardTitle}>Current {terminology.stage}</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+            {job.current_stage ? (
+              <span style={{
+                ...styles.stageBadge,
+                backgroundColor: `${job.current_stage.color}20`,
+                color: job.current_stage.color,
+                borderLeft: `4px solid ${job.current_stage.color}`,
+              }}>
+                {job.current_stage.name}
+                {job.current_stage.is_terminal && ' ✓'}
+              </span>
+            ) : (
+              <span style={{ color: '#666666' }}>Not set</span>
+            )}
+          </div>
+          
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <select
+              value={selectedStageId}
+              onChange={(e) => setSelectedStageId(e.target.value)}
+              style={styles.stageSelect}
+            >
+              <option value="">Select new stage...</option>
+              {stages.map(stage => (
+                <option key={stage.id} value={stage.id}>
+                  {stage.name}{stage.is_terminal ? ' (Done)' : ''}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={handleStageChange}
+              disabled={changingStage || !selectedStageId || selectedStageId === job.current_stage?.id}
+              style={{
+                ...styles.stageChangeBtn,
+                opacity: changingStage || !selectedStageId || selectedStageId === job.current_stage?.id ? 0.5 : 1,
+              }}
+            >
+              {changingStage ? 'Changing...' : 'Change Stage'}
+            </button>
+          </div>
+        </div>
+
+        {/* Assignments Card */}
+        <div style={styles.card}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <h2 style={{ ...styles.cardTitle, marginBottom: 0 }}>Assigned Users</h2>
+            {isAdmin && unassignedUsers.length > 0 && (
+              <button onClick={() => setShowAssignModal(true)} style={styles.addUserBtn}>
+                + Assign User
+              </button>
+            )}
+          </div>
+          
+          {job.assignments.length === 0 ? (
+            <p style={{ color: '#666666', fontSize: '14px', margin: 0 }}>No users assigned</p>
+          ) : (
+            <div style={styles.assignmentList}>
+              {job.assignments.map(assignment => (
+                <span key={assignment.id} style={styles.assignmentBadge}>
+                  {assignment.user_name}
+                  {isAdmin && (
+                    <button
+                      onClick={() => handleRemoveAssignment(assignment.user_id)}
+                      style={styles.removeBtn}
+                      title="Remove assignment"
+                    >
+                      ×
+                    </button>
+                  )}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Stage History Card */}
+        {job.stage_history.length > 0 && (
+          <div style={styles.card}>
+            <h2 style={styles.cardTitle}>{terminology.stage} History</h2>
+            <div>
+              {job.stage_history.map((entry, index) => (
+                <div key={entry.id} style={{
+                  ...styles.historyItem,
+                  borderBottom: index === job.stage_history.length - 1 ? 'none' : '1px solid #2a2a2a',
+                }}>
+                  <div style={{ ...styles.historyDot, backgroundColor: entry.to_stage_color }} />
+                  <div style={styles.historyContent}>
+                    <div style={styles.historyText}>
+                      {entry.from_stage_name ? (
+                        <>{entry.from_stage_name} → <strong>{entry.to_stage_name}</strong></>
+                      ) : (
+                        <>Started at <strong>{entry.to_stage_name}</strong></>
+                      )}
+                    </div>
+                    <div style={styles.historyMeta}>
+                      {entry.changed_by_name || 'System'} • {formatDate(entry.changed_at)}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Actions Section - Side by side: Add Materials | Start/Stop Timer */}
         <div style={styles.section}>
@@ -461,6 +890,36 @@ export default function JobDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Assign User Modal */}
+      {showAssignModal && (
+        <div style={styles.modal} onClick={() => setShowAssignModal(false)}>
+          <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <h3 style={styles.modalTitle}>Assign User</h3>
+            {unassignedUsers.length === 0 ? (
+              <p style={{ color: '#666666', fontSize: '14px' }}>All users are already assigned</p>
+            ) : (
+              <div style={styles.userList}>
+                {unassignedUsers.map(user => (
+                  <div
+                    key={user.id}
+                    style={styles.userItem}
+                    onClick={() => handleAssignUser(user.id)}
+                  >
+                    <span style={{ color: '#ffffff', fontSize: '14px' }}>{user.full_name}</span>
+                    <span style={{ color: '#3b82f6', fontSize: '12px' }}>Assign →</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={styles.modalActions}>
+              <button onClick={() => setShowAssignModal(false)} style={styles.cancelBtn}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

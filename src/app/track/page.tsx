@@ -9,7 +9,15 @@ import { useTerminology } from "@/lib/terminology";
 interface Stage {
   id: string;
   name: string;
+  color: string;
 }
+
+interface OrgUser {
+  id: string;
+  full_name: string;
+}
+
+type Priority = 'low' | 'medium' | 'high' | 'urgent';
 
 const s = {
   page: {
@@ -154,6 +162,49 @@ const s = {
     border: "1px solid rgba(34, 197, 94, 0.2)",
     textAlign: "center" as const,
   },
+  row: {
+    display: "flex",
+    gap: "12px",
+  },
+  halfField: {
+    flex: 1,
+  },
+  userList: {
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: "8px",
+    maxHeight: "200px",
+    overflowY: "auto" as const,
+    padding: "12px",
+    backgroundColor: "#0a0a0a",
+    borderRadius: "12px",
+    border: "1px solid #2a2a2a",
+  },
+  userItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    padding: "8px 12px",
+    borderRadius: "8px",
+    cursor: "pointer",
+    transition: "all 0.15s ease",
+  } as React.CSSProperties,
+  userItemSelected: {
+    backgroundColor: "rgba(59, 130, 246, 0.15)",
+  },
+  checkbox: {
+    width: "18px",
+    height: "18px",
+    cursor: "pointer",
+  },
+  userName: {
+    fontSize: "14px",
+    color: "#ffffff",
+  },
+  userEmail: {
+    fontSize: "12px",
+    color: "#666666",
+  },
 };
 
 export default function CreateJobPage() {
@@ -164,6 +215,12 @@ export default function CreateJobPage() {
   const [identifier, setIdentifier] = useState("");
   const [stageId, setStageId] = useState("");
   const [stages, setStages] = useState<Stage[]>([]);
+  const [priority, setPriority] = useState<Priority>("medium");
+  const [dueDate, setDueDate] = useState("");
+  const [estimatedHours, setEstimatedHours] = useState("");
+  const [description, setDescription] = useState("");
+  const [orgUsers, setOrgUsers] = useState<OrgUser[]>([]);
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -174,33 +231,54 @@ export default function CreateJobPage() {
     }
   }, [loading, session, router]);
 
-  // Load stages
+  // Load stages and users
   useEffect(() => {
-    const loadStages = async () => {
+    const loadData = async () => {
       const orgId = session?.orgId || session?.shopId;
       if (!orgId) return;
 
       try {
-        const { data, error: stagesError } = await supabase
+        // Load stages
+        const { data: stagesData, error: stagesError } = await supabase
           .from("stages")
-          .select("id, name")
+          .select("id, name, color")
           .eq("org_id", orgId)
+          .eq("is_active", true)
           .order("sort_order", { ascending: true });
 
         if (stagesError) throw stagesError;
-        setStages(data ?? []);
+        setStages((stagesData ?? []).map(s => ({ ...s, color: s.color || '#3b82f6' })));
         
         // Set default stage if available
-        if (data && data.length > 0) {
-          setStageId(data[0].id);
+        if (stagesData && stagesData.length > 0) {
+          setStageId(stagesData[0].id);
         }
+
+        // Load org users for assignment
+        const { data: usersData, error: usersError } = await supabase
+          .from("users")
+          .select("id, full_name")
+          .eq("org_id", orgId)
+          .eq("is_active", true)
+          .order("full_name", { ascending: true });
+
+        if (usersError) throw usersError;
+        setOrgUsers(usersData ?? []);
       } catch (err) {
-        console.error("Failed to load stages:", err);
+        console.error("Failed to load data:", err);
       }
     };
 
-    loadStages();
+    loadData();
   }, [session?.orgId, session?.shopId]);
+
+  const toggleUserSelection = (userId: string) => {
+    setSelectedUserIds(prev => 
+      prev.includes(userId) 
+        ? prev.filter(id => id !== userId)
+        : [...prev, userId]
+    );
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -216,21 +294,27 @@ export default function CreateJobPage() {
     setError(null);
 
     try {
-      // Create new job (vehicle in current schema)
-      const { data: newJob, error: insertError } = await supabase
-        .from("vehicles")
-        .insert({
-          org_id: orgId,
-          vin: identifier.trim(),
-          current_stage_id: stageId || null,
-        })
-        .select("id")
-        .single();
+      // Use RPC to create job with assignments
+      const { data: result, error: rpcError } = await supabase.rpc('create_job_with_assignments', {
+        p_org_id: orgId,
+        p_identifier: identifier.trim(),
+        p_stage_id: stageId || null,
+        p_priority: priority,
+        p_due_date: dueDate || null,
+        p_estimated_hours: estimatedHours ? parseFloat(estimatedHours) : null,
+        p_description: description.trim() || null,
+        p_created_by: session?.userId || null,
+        p_assigned_user_ids: selectedUserIds.length > 0 ? selectedUserIds : null,
+      });
 
-      if (insertError) throw insertError;
+      if (rpcError) throw rpcError;
+
+      if (!result?.success) {
+        throw new Error(result?.error || 'Failed to create job');
+      }
 
       // Redirect to the new job's detail page
-      router.push(`/jobs/${newJob.id}`);
+      router.push(`/jobs/${result.job_id}`);
     } catch (err) {
       console.error("Failed to create job:", err);
       setError(`Failed to create ${terminology.item.toLowerCase()}. Please try again.`);
@@ -311,29 +395,100 @@ export default function CreateJobPage() {
             />
           </div>
 
-          <div style={s.fieldGroup}>
-            <label style={s.label}>Initial {terminology.stage}</label>
-            <select
-              value={stageId}
-              onChange={(e) => setStageId(e.target.value)}
-              style={s.select}
-              onFocus={(e) => {
-                e.currentTarget.style.borderColor = "#3b82f6";
-                e.currentTarget.style.boxShadow = "0 0 20px rgba(59, 130, 246, 0.3)";
-              }}
-              onBlur={(e) => {
-                e.currentTarget.style.borderColor = "#2a2a2a";
-                e.currentTarget.style.boxShadow = "none";
-              }}
-            >
-              <option value="">No initial {terminology.stage.toLowerCase()}</option>
-              {stages.map((stage) => (
-                <option key={stage.id} value={stage.id}>
-                  {stage.name}
-                </option>
-              ))}
-            </select>
+          <div style={s.row}>
+            <div style={{ ...s.fieldGroup, ...s.halfField }}>
+              <label style={s.label}>Initial {terminology.stage}</label>
+              <select
+                value={stageId}
+                onChange={(e) => setStageId(e.target.value)}
+                style={s.select}
+              >
+                <option value="">No initial {terminology.stage.toLowerCase()}</option>
+                {stages.map((stage) => (
+                  <option key={stage.id} value={stage.id}>
+                    {stage.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div style={{ ...s.fieldGroup, ...s.halfField }}>
+              <label style={s.label}>Priority</label>
+              <select
+                value={priority}
+                onChange={(e) => setPriority(e.target.value as Priority)}
+                style={s.select}
+              >
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="urgent">Urgent</option>
+              </select>
+            </div>
           </div>
+
+          <div style={s.row}>
+            <div style={{ ...s.fieldGroup, ...s.halfField }}>
+              <label style={s.label}>Due Date</label>
+              <input
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                style={s.input}
+              />
+            </div>
+
+            <div style={{ ...s.fieldGroup, ...s.halfField }}>
+              <label style={s.label}>Estimated Hours</label>
+              <input
+                type="number"
+                step="0.5"
+                min="0"
+                value={estimatedHours}
+                onChange={(e) => setEstimatedHours(e.target.value)}
+                style={s.input}
+                placeholder="0.0"
+              />
+            </div>
+          </div>
+
+          <div style={s.fieldGroup}>
+            <label style={s.label}>Description (Optional)</label>
+            <input
+              type="text"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              style={s.input}
+              placeholder="Brief description of the job"
+            />
+          </div>
+
+          {orgUsers.length > 0 && (
+            <div style={s.fieldGroup}>
+              <label style={s.label}>Assign Users ({selectedUserIds.length} selected)</label>
+              <div style={s.userList}>
+                {orgUsers.map((user) => (
+                  <div
+                    key={user.id}
+                    onClick={() => toggleUserSelection(user.id)}
+                    style={{
+                      ...s.userItem,
+                      ...(selectedUserIds.includes(user.id) ? s.userItemSelected : {}),
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedUserIds.includes(user.id)}
+                      onChange={() => toggleUserSelection(user.id)}
+                      style={s.checkbox}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                    <span style={s.userName}>{user.full_name}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {error && <div style={s.error}>{error}</div>}
 

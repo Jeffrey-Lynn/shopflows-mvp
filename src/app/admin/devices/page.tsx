@@ -331,7 +331,7 @@ export default function DevicesPage() {
         <span style={s.logo}>SHOPFLOWS ADMIN</span>
         <nav style={s.nav}>
           <a href="/admin" style={s.navBtn}>Dashboard</a>
-          <a href="/admin/locations" style={s.navBtn}>Locations</a>
+          <a href="/admin/locations" style={s.navBtn}>Stages</a>
           <a href="/admin/devices" style={{ ...s.navBtn, ...s.navBtnActive }}>Devices</a>
           <button onClick={handleLogout} style={{ ...s.navBtn, color: "#ef4444", borderColor: "#ef4444" }}>
             Logout
