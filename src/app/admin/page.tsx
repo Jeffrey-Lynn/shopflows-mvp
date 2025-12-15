@@ -2,172 +2,213 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/hooks/useAuth";
 
-interface KPIs {
-  activeVehicles: number;
-  readyForPickup: number;
-  movementsToday: number;
-  avgCompletionTime: string;
+interface DashboardStats {
+  totalUsers: number;
+  totalDepartments: number;
+  activeJobs: number;
+  pendingTasks: number;
 }
+
+// Icons
+const UsersIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+    <circle cx="9" cy="7" r="4" />
+    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+  </svg>
+);
+
+const DepartmentsIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+    <polyline points="9 22 9 12 15 12 15 22" />
+  </svg>
+);
+
+const BriefcaseIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
+    <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+  </svg>
+);
+
+const ClipboardIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+    <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+  </svg>
+);
+
+const ActivityIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+  </svg>
+);
+
+const SettingsIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="3" />
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+  </svg>
+);
+
+const ArrowRightIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="5" y1="12" x2="19" y2="12" />
+    <polyline points="12 5 19 12 12 19" />
+  </svg>
+);
 
 const s = {
   page: {
     minHeight: "100vh",
     padding: "20px",
-    maxWidth: "900px",
+    maxWidth: "1200px",
     margin: "0 auto",
   },
-  header: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: "24px",
-    flexWrap: "wrap" as const,
-    gap: "12px",
-  },
-  logo: {
-    fontSize: "11px",
-    fontWeight: 600,
-    letterSpacing: "0.2em",
-    color: "#666666",
-  },
-  nav: {
-    display: "flex",
-    gap: "8px",
-    flexWrap: "wrap" as const,
-  },
-  navBtn: {
-    padding: "10px 16px",
-    borderRadius: "8px",
-    fontSize: "13px",
-    fontWeight: 500,
-    color: "#999999",
-    backgroundColor: "transparent",
-    border: "1px solid #2a2a2a",
-    cursor: "pointer",
-    transition: "all 0.15s ease",
-    textDecoration: "none",
-  } as React.CSSProperties,
-  navBtnActive: {
-    backgroundColor: "#3b82f6",
-    borderColor: "#3b82f6",
-    color: "#ffffff",
+  welcomeSection: {
+    marginBottom: "32px",
   },
   title: {
     fontSize: "28px",
-    fontWeight: 600,
+    fontWeight: 700,
     color: "#ffffff",
     marginBottom: "8px",
   },
   subtitle: {
     fontSize: "14px",
     color: "#666666",
-    marginBottom: "24px",
   },
-  kpiGrid: {
+  orgBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "6px",
+    padding: "6px 12px",
+    borderRadius: "8px",
+    backgroundColor: "rgba(59, 130, 246, 0.1)",
+    border: "1px solid rgba(59, 130, 246, 0.2)",
+    color: "#3b82f6",
+    fontSize: "13px",
+    fontWeight: 500,
+    marginTop: "12px",
+  },
+  statsGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(2, 1fr)",
     gap: "16px",
     marginBottom: "32px",
   },
-  kpiCard: {
+  statCard: {
     backgroundColor: "#1a1a1a",
     borderRadius: "16px",
     padding: "24px",
     border: "1px solid #2a2a2a",
-    cursor: "pointer",
-    transition: "all 0.2s ease",
-  } as React.CSSProperties,
-  kpiCardHighlight: {
-    borderColor: "rgba(234, 179, 8, 0.3)",
-    backgroundColor: "rgba(234, 179, 8, 0.05)",
+    transition: "all 0.15s ease",
   },
-  kpiValue: {
+  statHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: "16px",
+  },
+  statIcon: {
+    width: "48px",
+    height: "48px",
+    borderRadius: "12px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  statValue: {
     fontSize: "36px",
     fontWeight: 700,
     color: "#ffffff",
     marginBottom: "4px",
   },
-  kpiValueHighlight: {
-    color: "#eab308",
-  },
-  kpiLabel: {
+  statLabel: {
     fontSize: "14px",
     color: "#666666",
-    marginBottom: "8px",
-  },
-  kpiHint: {
-    fontSize: "11px",
-    color: "#444444",
-    marginTop: "8px",
-  },
-  section: {
-    backgroundColor: "#1a1a1a",
-    borderRadius: "16px",
-    padding: "20px",
-    border: "1px solid #2a2a2a",
-    marginBottom: "24px",
   },
   sectionTitle: {
-    fontSize: "16px",
+    fontSize: "18px",
     fontWeight: 600,
     color: "#ffffff",
     marginBottom: "16px",
   },
-  quickLinks: {
+  actionsGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-    gap: "12px",
+    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+    gap: "16px",
   },
-  quickLink: {
-    display: "flex",
-    alignItems: "center",
-    gap: "12px",
-    padding: "16px",
-    backgroundColor: "#0a0a0a",
-    borderRadius: "12px",
+  actionCard: {
+    backgroundColor: "#1a1a1a",
+    borderRadius: "16px",
+    padding: "24px",
     border: "1px solid #2a2a2a",
     textDecoration: "none",
-    color: "#ffffff",
+    display: "block",
     transition: "all 0.15s ease",
     cursor: "pointer",
   } as React.CSSProperties,
-  quickLinkIcon: {
-    width: "40px",
-    height: "40px",
-    borderRadius: "10px",
-    backgroundColor: "rgba(59, 130, 246, 0.15)",
+  actionHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: "16px",
+    marginBottom: "12px",
+  },
+  actionIcon: {
+    width: "48px",
+    height: "48px",
+    borderRadius: "12px",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    fontSize: "18px",
   },
-  quickLinkText: {
-    fontSize: "14px",
+  actionTitle: {
+    fontSize: "16px",
+    fontWeight: 600,
+    color: "#ffffff",
+  },
+  actionDesc: {
+    fontSize: "13px",
+    color: "#666666",
+    marginBottom: "16px",
+  },
+  actionLink: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    fontSize: "13px",
     fontWeight: 500,
   },
   loading: {
     textAlign: "center" as const,
-    padding: "40px",
+    padding: "60px 20px",
     color: "#666666",
+  },
+  spinner: {
+    width: "40px",
+    height: "40px",
+    border: "3px solid #2a2a2a",
+    borderTopColor: "#3b82f6",
+    borderRadius: "50%",
+    margin: "0 auto 16px",
   },
 };
 
-function formatDuration(hours: number): string {
-  if (hours < 1) return "< 1 hour";
-  if (hours < 24) return `${Math.round(hours)} hours`;
-  const days = hours / 24;
-  if (days < 1.5) return "1 day";
-  return `${days.toFixed(1)} days`;
-}
-
 export default function AdminDashboard() {
   const router = useRouter();
-  const { session, loading: authLoading, isAdmin, logout } = useAuth();
-  const [kpis, setKpis] = useState<KPIs | null>(null);
+  const { session, loading: authLoading, isAdmin } = useAuth();
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [orgName, setOrgName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const isPlatformAdmin = session?.role === "platform_admin";
 
   useEffect(() => {
     if (!authLoading && (!session?.isAuthenticated || !isAdmin)) {
@@ -176,322 +217,250 @@ export default function AdminDashboard() {
   }, [authLoading, session, isAdmin, router]);
 
   useEffect(() => {
-    const fetchKPIs = async () => {
-      if (!session?.shopId) return;
+    const fetchData = async () => {
+      if (!session?.orgId) {
+        setLoading(false);
+        return;
+      }
 
       try {
-        // Get all locations to find "Complete" and "Ready for Pickup" IDs
-        const { data: locations } = await supabase
-          .from("locations")
-          .select("id, name")
-          .eq("shop_id", session.shopId);
+        // Fetch org name
+        const { data: orgData } = await supabase
+          .from("organizations")
+          .select("name")
+          .eq("id", session.orgId)
+          .single();
 
-        const completeLocation = locations?.find(l => 
-          l.name.toLowerCase().includes("complete")
-        );
-        const readyLocation = locations?.find(l => 
-          l.name.toLowerCase().includes("ready") || l.name.toLowerCase().includes("pickup")
-        );
+        if (orgData) {
+          setOrgName(orgData.name);
+        }
 
-        // Get all vehicles with their current locations
-        const { data: vehicles } = await supabase
-          .from("vehicles")
-          .select("id, current_location_id")
-          .eq("shop_id", session.shopId);
-
-        // Calculate active vehicles (not in Complete)
-        const activeVehicles = vehicles?.filter(v => 
-          !completeLocation || v.current_location_id !== completeLocation.id
-        ).length || 0;
-
-        // Calculate ready for pickup
-        const readyForPickup = readyLocation 
-          ? vehicles?.filter(v => v.current_location_id === readyLocation.id).length || 0
-          : 0;
-
-        // Get movements in last 24 hours
-        const yesterday = new Date();
-        yesterday.setHours(yesterday.getHours() - 24);
-        
-        const { count: movementsToday, error: movError } = await supabase
-          .from("vehicle_movements")
+        // Fetch user count for this org
+        const { count: userCount } = await supabase
+          .from("users")
           .select("id", { count: "exact", head: true })
-          .eq("shop_id", session.shopId)
-          .gte("moved_at", yesterday.toISOString());
+          .eq("org_id", session.orgId);
 
-        // Debug: log if there's an error or unexpected result
-        if (movError) {
-          console.error("Movements query error:", movError);
-        }
-        console.log("Movements today query:", { shopId: session.shopId, since: yesterday.toISOString(), count: movementsToday });
+        // Fetch department count for this org
+        const { count: deptCount } = await supabase
+          .from("departments")
+          .select("id", { count: "exact", head: true })
+          .eq("org_id", session.orgId);
 
-        // Calculate average completion time
-        // Get vehicles that have reached "Complete" status
-        let avgCompletionTime = "—";
-        if (completeLocation) {
-          const { data: completedMovements } = await supabase
-            .from("vehicle_movements")
-            .select("vehicle_id, moved_at")
-            .eq("shop_id", session.shopId)
-            .eq("to_location_id", completeLocation.id)
-            .order("moved_at", { ascending: false })
-            .limit(20);
-
-          if (completedMovements && completedMovements.length > 0) {
-            const vehicleIds = Array.from(new Set(completedMovements.map(m => m.vehicle_id)));
-            
-            // Get first movement for each completed vehicle
-            const { data: firstMovements } = await supabase
-              .from("vehicle_movements")
-              .select("vehicle_id, moved_at")
-              .eq("shop_id", session.shopId)
-              .in("vehicle_id", vehicleIds)
-              .order("moved_at", { ascending: true });
-
-            if (firstMovements) {
-              const firstMoveMap = new Map<string, string>();
-              firstMovements.forEach(m => {
-                if (!firstMoveMap.has(m.vehicle_id)) {
-                  firstMoveMap.set(m.vehicle_id, m.moved_at);
-                }
-              });
-
-              let totalHours = 0;
-              let count = 0;
-              completedMovements.forEach(cm => {
-                const firstMove = firstMoveMap.get(cm.vehicle_id);
-                if (firstMove) {
-                  const start = new Date(firstMove).getTime();
-                  const end = new Date(cm.moved_at).getTime();
-                  const hours = (end - start) / (1000 * 60 * 60);
-                  if (hours > 0) {
-                    totalHours += hours;
-                    count++;
-                  }
-                }
-              });
-
-              if (count > 0) {
-                avgCompletionTime = formatDuration(totalHours / count);
-              }
-            }
-          }
-        }
-
-        setKpis({
-          activeVehicles,
-          readyForPickup,
-          movementsToday: movementsToday || 0,
-          avgCompletionTime,
+        setStats({
+          totalUsers: userCount || 0,
+          totalDepartments: deptCount || 0,
+          activeJobs: 0, // Placeholder
+          pendingTasks: 0, // Placeholder
         });
       } catch (err) {
-        console.error("Error fetching KPIs:", err);
+        console.error("Error fetching dashboard data:", err);
       } finally {
         setLoading(false);
       }
     };
 
-    if (session?.shopId) {
-      fetchKPIs();
+    if (session?.orgId) {
+      fetchData();
     }
-  }, [session?.shopId]);
+  }, [session?.orgId]);
 
-  const handleLogout = () => {
-    logout();
-    router.replace("/admin/login");
-  };
-
-  const handleKpiClick = (path: string) => {
-    router.push(path);
+  const handleSettingsClick = () => {
+    alert("Settings feature coming soon!");
   };
 
   if (authLoading || !session?.isAuthenticated) {
-    return <div style={s.loading}>Loading...</div>;
+    return (
+      <div style={s.loading}>
+        <div style={s.spinner} className="admin-spinner" />
+        <p>Loading...</p>
+        <style dangerouslySetInnerHTML={{ __html: `
+          @keyframes admin-spin { to { transform: rotate(360deg); } }
+          .admin-spinner { animation: admin-spin 1s linear infinite; }
+        ` }} />
+      </div>
+    );
   }
-
-  const isPlatformAdmin = session?.role === "platform_admin";
 
   return (
     <main style={s.page}>
-      <header style={s.header}>
-        <span style={s.logo}>SHOPFLOWS ADMIN</span>
-        <nav style={s.nav}>
-          {isPlatformAdmin && (
-            <a href="/platform" style={{ ...s.navBtn, color: "#ef4444", borderColor: "#ef4444" }}>
-              Platform
-            </a>
-          )}
-          <a href="/admin" style={{ ...s.navBtn, ...s.navBtnActive }}>
-            Dashboard
-          </a>
-          <a href="/admin/locations" style={s.navBtn}>
-            Locations
-          </a>
-          <a href="/admin/devices" style={s.navBtn}>
-            Devices
-          </a>
-          <a href="/admin/invites" style={s.navBtn}>
-            Invites
-          </a>
-          <button
-            onClick={handleLogout}
-            style={{ ...s.navBtn, color: "#ef4444", borderColor: "#ef4444" }}
-          >
-            Logout
-          </button>
-        </nav>
-      </header>
-
-      <h1 style={s.title}>Dashboard</h1>
-      <p style={s.subtitle}>
-        Welcome back{session.name ? `, ${session.name}` : ""}
-      </p>
+      {/* Welcome Section */}
+      <div style={s.welcomeSection}>
+        <h1 style={s.title}>
+          Welcome back{session.name ? `, ${session.name}` : ""}!
+        </h1>
+        <p style={s.subtitle}>
+          Here&apos;s what&apos;s happening in your shop today
+        </p>
+        {orgName && (
+          <div style={s.orgBadge}>
+            <DepartmentsIcon />
+            {orgName}
+          </div>
+        )}
+      </div>
 
       {loading ? (
-        <div style={s.loading}>Loading KPIs...</div>
+        <div style={s.loading}>
+          <div style={s.spinner} className="admin-spinner" />
+          <p>Loading dashboard...</p>
+          <style dangerouslySetInnerHTML={{ __html: `
+            @keyframes admin-spin { to { transform: rotate(360deg); } }
+            .admin-spinner { animation: admin-spin 1s linear infinite; }
+          ` }} />
+        </div>
       ) : (
         <>
-          {/* KPI Tiles */}
-          <div style={s.kpiGrid}>
-            {/* Active Vehicles */}
-            <div
-              style={s.kpiCard}
-              onClick={() => handleKpiClick("/admin/vehicles")}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = "#3b82f6";
-                e.currentTarget.style.boxShadow = "0 0 30px rgba(59, 130, 246, 0.2)";
-                e.currentTarget.style.transform = "scale(1.02)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = "#2a2a2a";
-                e.currentTarget.style.boxShadow = "none";
-                e.currentTarget.style.transform = "scale(1)";
-              }}
-            >
-              <div style={s.kpiValue}>{kpis?.activeVehicles || 0}</div>
-              <div style={s.kpiLabel}>Active Vehicles</div>
-              <div style={s.kpiHint}>Tap to view all vehicles →</div>
-            </div>
-
-            {/* Ready for Pickup - Highlighted */}
-            <div
-              style={{ ...s.kpiCard, ...s.kpiCardHighlight }}
-              onClick={() => handleKpiClick("/admin/vehicles?filter=ready")}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = "#eab308";
-                e.currentTarget.style.boxShadow = "0 0 30px rgba(234, 179, 8, 0.3)";
-                e.currentTarget.style.transform = "scale(1.02)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = "rgba(234, 179, 8, 0.3)";
-                e.currentTarget.style.boxShadow = "none";
-                e.currentTarget.style.transform = "scale(1)";
-              }}
-            >
-              <div style={{ ...s.kpiValue, ...s.kpiValueHighlight }}>
-                {kpis?.readyForPickup || 0}
+          {/* Stats Grid */}
+          <div style={s.statsGrid}>
+            {/* Total Users */}
+            <div style={s.statCard}>
+              <div style={s.statHeader}>
+                <div style={{ ...s.statIcon, backgroundColor: "rgba(59, 130, 246, 0.1)", color: "#3b82f6" }}>
+                  <UsersIcon />
+                </div>
               </div>
-              <div style={s.kpiLabel}>Ready for Pickup</div>
-              <div style={s.kpiHint}>Customers waiting →</div>
+              <div style={s.statValue}>{stats?.totalUsers || 0}</div>
+              <div style={s.statLabel}>Total Users</div>
             </div>
 
-            {/* Movements Today */}
-            <div
-              style={s.kpiCard}
-              onClick={() => handleKpiClick("/admin/activity")}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = "#3b82f6";
-                e.currentTarget.style.boxShadow = "0 0 30px rgba(59, 130, 246, 0.2)";
-                e.currentTarget.style.transform = "scale(1.02)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = "#2a2a2a";
-                e.currentTarget.style.boxShadow = "none";
-                e.currentTarget.style.transform = "scale(1)";
-              }}
-            >
-              <div style={s.kpiValue}>{kpis?.movementsToday || 0}</div>
-              <div style={s.kpiLabel}>Movements Today</div>
-              <div style={s.kpiHint}>Tap to view activity →</div>
+            {/* Total Departments */}
+            <div style={s.statCard}>
+              <div style={s.statHeader}>
+                <div style={{ ...s.statIcon, backgroundColor: "rgba(16, 185, 129, 0.1)", color: "#10b981" }}>
+                  <DepartmentsIcon />
+                </div>
+              </div>
+              <div style={s.statValue}>{stats?.totalDepartments || 0}</div>
+              <div style={s.statLabel}>Total Departments</div>
             </div>
 
-            {/* Avg Completion Time */}
-            <div
-              style={s.kpiCard}
-              onClick={() => handleKpiClick("/admin/analytics")}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = "#3b82f6";
-                e.currentTarget.style.boxShadow = "0 0 30px rgba(59, 130, 246, 0.2)";
-                e.currentTarget.style.transform = "scale(1.02)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = "#2a2a2a";
-                e.currentTarget.style.boxShadow = "none";
-                e.currentTarget.style.transform = "scale(1)";
-              }}
-            >
-              <div style={s.kpiValue}>{kpis?.avgCompletionTime || "—"}</div>
-              <div style={s.kpiLabel}>Avg Completion Time</div>
-              <div style={s.kpiHint}>Tap to view trends →</div>
+            {/* Active Jobs */}
+            <div style={s.statCard}>
+              <div style={s.statHeader}>
+                <div style={{ ...s.statIcon, backgroundColor: "rgba(245, 158, 11, 0.1)", color: "#f59e0b" }}>
+                  <BriefcaseIcon />
+                </div>
+              </div>
+              <div style={s.statValue}>{stats?.activeJobs || 0}</div>
+              <div style={s.statLabel}>Active Jobs</div>
+            </div>
+
+            {/* Pending Tasks */}
+            <div style={s.statCard}>
+              <div style={s.statHeader}>
+                <div style={{ ...s.statIcon, backgroundColor: "rgba(139, 92, 246, 0.1)", color: "#8b5cf6" }}>
+                  <ClipboardIcon />
+                </div>
+              </div>
+              <div style={s.statValue}>{stats?.pendingTasks || 0}</div>
+              <div style={s.statLabel}>Pending Tasks</div>
             </div>
           </div>
 
           {/* Quick Actions */}
-          <div style={s.section}>
-            <h2 style={s.sectionTitle}>Quick Actions</h2>
-            <div style={s.quickLinks}>
-              <a
-                href="/admin/vehicles"
-                style={s.quickLink}
+          <h2 style={s.sectionTitle}>Quick Actions</h2>
+          <div style={s.actionsGrid}>
+            {/* Manage Users */}
+            <Link
+              href="/admin/users"
+              style={s.actionCard}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "#3b82f6";
+                e.currentTarget.style.transform = "translateY(-2px)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "#2a2a2a";
+                e.currentTarget.style.transform = "translateY(0)";
+              }}
+            >
+              <div style={s.actionHeader}>
+                <div style={{ ...s.actionIcon, backgroundColor: "rgba(59, 130, 246, 0.1)", color: "#3b82f6" }}>
+                  <UsersIcon />
+                </div>
+                <span style={s.actionTitle}>Manage Users</span>
+              </div>
+              <p style={s.actionDesc}>Add, edit, or remove users from your organization</p>
+              <div style={{ ...s.actionLink, color: "#3b82f6" }}>
+                View Users <ArrowRightIcon />
+              </div>
+            </Link>
+
+            {/* Manage Departments */}
+            <Link
+              href="/admin/departments"
+              style={s.actionCard}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "#10b981";
+                e.currentTarget.style.transform = "translateY(-2px)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "#2a2a2a";
+                e.currentTarget.style.transform = "translateY(0)";
+              }}
+            >
+              <div style={s.actionHeader}>
+                <div style={{ ...s.actionIcon, backgroundColor: "rgba(16, 185, 129, 0.1)", color: "#10b981" }}>
+                  <DepartmentsIcon />
+                </div>
+                <span style={s.actionTitle}>Manage Departments</span>
+              </div>
+              <p style={s.actionDesc}>Create and organize departments for your shop</p>
+              <div style={{ ...s.actionLink, color: "#10b981" }}>
+                View Departments <ArrowRightIcon />
+              </div>
+            </Link>
+
+            {/* View Activity - Platform Admin Only */}
+            {isPlatformAdmin && (
+              <Link
+                href="/platform/activity"
+                style={s.actionCard}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = "#3b82f6";
+                  e.currentTarget.style.borderColor = "#f59e0b";
+                  e.currentTarget.style.transform = "translateY(-2px)";
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.borderColor = "#2a2a2a";
+                  e.currentTarget.style.transform = "translateY(0)";
                 }}
               >
-                <div style={s.quickLinkIcon}>🚗</div>
-                <span style={s.quickLinkText}>All Vehicles</span>
-              </a>
-              <a
-                href="/admin/activity"
-                style={s.quickLink}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = "#3b82f6";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = "#2a2a2a";
-                }}
-              >
-                <div style={s.quickLinkIcon}>📋</div>
-                <span style={s.quickLinkText}>Activity Log</span>
-              </a>
-              <a
-                href="/admin/locations"
-                style={s.quickLink}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = "#3b82f6";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = "#2a2a2a";
-                }}
-              >
-                <div style={s.quickLinkIcon}>📍</div>
-                <span style={s.quickLinkText}>Manage Locations</span>
-              </a>
-              <a
-                href="/track"
-                style={s.quickLink}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.borderColor = "#3b82f6";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = "#2a2a2a";
-                }}
-              >
-                <div style={s.quickLinkIcon}>➕</div>
-                <span style={s.quickLinkText}>Track Vehicle</span>
-              </a>
+                <div style={s.actionHeader}>
+                  <div style={{ ...s.actionIcon, backgroundColor: "rgba(245, 158, 11, 0.1)", color: "#f59e0b" }}>
+                    <ActivityIcon />
+                  </div>
+                  <span style={s.actionTitle}>View Activity</span>
+                </div>
+                <p style={s.actionDesc}>Monitor platform-wide activity and events</p>
+                <div style={{ ...s.actionLink, color: "#f59e0b" }}>
+                  View Activity <ArrowRightIcon />
+                </div>
+              </Link>
+            )}
+
+            {/* Settings */}
+            <div
+              style={s.actionCard}
+              onClick={handleSettingsClick}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "#8b5cf6";
+                e.currentTarget.style.transform = "translateY(-2px)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "#2a2a2a";
+                e.currentTarget.style.transform = "translateY(0)";
+              }}
+            >
+              <div style={s.actionHeader}>
+                <div style={{ ...s.actionIcon, backgroundColor: "rgba(139, 92, 246, 0.1)", color: "#8b5cf6" }}>
+                  <SettingsIcon />
+                </div>
+                <span style={s.actionTitle}>Settings</span>
+              </div>
+              <p style={s.actionDesc}>Configure your organization settings and preferences</p>
+              <div style={{ ...s.actionLink, color: "#8b5cf6" }}>
+                Open Settings <ArrowRightIcon />
+              </div>
             </div>
           </div>
         </>

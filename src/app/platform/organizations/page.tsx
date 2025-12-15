@@ -1,10 +1,29 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { useAuth } from "@/hooks/useAuth";
+
+// Inject global styles for animations
+const globalStyles = `
+  @keyframes org-spin {
+    to { transform: rotate(360deg); }
+  }
+  .org-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid #2a2a2a;
+    border-top-color: #3b82f6;
+    border-radius: 50%;
+    animation: org-spin 1s linear infinite;
+    margin: 0 auto;
+  }
+  .spinner-icon {
+    animation: org-spin 1s linear infinite;
+  }
+`;
 
 interface Organization {
   id: string;
@@ -13,6 +32,18 @@ interface Organization {
   contact_email: string | null;
   user_count: number;
   department_count: number;
+}
+
+interface CreateOrgForm {
+  name: string;
+  contactEmail: string;
+  description: string;
+}
+
+interface FormErrors {
+  name?: string;
+  contactEmail?: string;
+  general?: string;
 }
 
 // Icons
@@ -65,6 +96,25 @@ const CalendarIcon = () => (
     <line x1="16" y1="2" x2="16" y2="6" />
     <line x1="8" y1="2" x2="8" y2="6" />
     <line x1="3" y1="10" x2="21" y2="10" />
+  </svg>
+);
+
+const CloseIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="18" y1="6" x2="6" y2="18" />
+    <line x1="6" y1="6" x2="18" y2="18" />
+  </svg>
+);
+
+const CheckIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="20 6 9 17 4 12" />
+  </svg>
+);
+
+const SpinnerIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="spinner-icon">
+    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
   </svg>
 );
 
@@ -204,6 +254,165 @@ const s = {
     margin: "0 auto 16px",
     color: "#444444",
   },
+  // Modal styles
+  modalOverlay: {
+    position: "fixed" as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    backdropFilter: "blur(4px)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 2000,
+    padding: "20px",
+  },
+  modal: {
+    backgroundColor: "#1a1a1a",
+    borderRadius: "16px",
+    border: "1px solid #2a2a2a",
+    width: "100%",
+    maxWidth: "480px",
+    maxHeight: "90vh",
+    overflow: "auto",
+  },
+  modalHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "20px 24px",
+    borderBottom: "1px solid #2a2a2a",
+  },
+  modalTitle: {
+    fontSize: "18px",
+    fontWeight: 600,
+    color: "#ffffff",
+  },
+  closeBtn: {
+    background: "none",
+    border: "none",
+    color: "#666666",
+    cursor: "pointer",
+    padding: "4px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: "6px",
+    transition: "all 0.15s ease",
+  } as React.CSSProperties,
+  modalBody: {
+    padding: "24px",
+  },
+  formGroup: {
+    marginBottom: "20px",
+  },
+  label: {
+    display: "block",
+    fontSize: "13px",
+    fontWeight: 500,
+    color: "#a0a0a0",
+    marginBottom: "8px",
+  },
+  required: {
+    color: "#ef4444",
+    marginLeft: "2px",
+  },
+  input: {
+    width: "100%",
+    padding: "12px 14px",
+    borderRadius: "10px",
+    border: "1px solid #2a2a2a",
+    backgroundColor: "#0a0a0a",
+    color: "#ffffff",
+    fontSize: "14px",
+    outline: "none",
+    transition: "border-color 0.15s ease",
+  } as React.CSSProperties,
+  inputError: {
+    borderColor: "#ef4444",
+  },
+  textarea: {
+    width: "100%",
+    padding: "12px 14px",
+    borderRadius: "10px",
+    border: "1px solid #2a2a2a",
+    backgroundColor: "#0a0a0a",
+    color: "#ffffff",
+    fontSize: "14px",
+    outline: "none",
+    resize: "vertical" as const,
+    minHeight: "100px",
+    fontFamily: "inherit",
+    transition: "border-color 0.15s ease",
+  } as React.CSSProperties,
+  errorText: {
+    fontSize: "12px",
+    color: "#ef4444",
+    marginTop: "6px",
+  },
+  generalError: {
+    backgroundColor: "rgba(239, 68, 68, 0.1)",
+    border: "1px solid rgba(239, 68, 68, 0.2)",
+    borderRadius: "10px",
+    padding: "12px 14px",
+    marginBottom: "20px",
+    fontSize: "13px",
+    color: "#ef4444",
+  },
+  modalFooter: {
+    display: "flex",
+    gap: "12px",
+    justifyContent: "flex-end",
+    padding: "20px 24px",
+    borderTop: "1px solid #2a2a2a",
+  },
+  cancelBtn: {
+    padding: "12px 20px",
+    borderRadius: "10px",
+    backgroundColor: "transparent",
+    border: "1px solid #2a2a2a",
+    color: "#a0a0a0",
+    fontSize: "14px",
+    fontWeight: 500,
+    cursor: "pointer",
+    transition: "all 0.15s ease",
+  } as React.CSSProperties,
+  submitBtn: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    padding: "12px 20px",
+    borderRadius: "10px",
+    backgroundColor: "#3b82f6",
+    border: "none",
+    color: "#ffffff",
+    fontSize: "14px",
+    fontWeight: 500,
+    cursor: "pointer",
+    transition: "all 0.15s ease",
+  } as React.CSSProperties,
+  submitBtnDisabled: {
+    opacity: 0.6,
+    cursor: "not-allowed",
+  },
+  successToast: {
+    position: "fixed" as const,
+    bottom: "24px",
+    right: "24px",
+    backgroundColor: "#10b981",
+    color: "#ffffff",
+    padding: "14px 20px",
+    borderRadius: "10px",
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    fontSize: "14px",
+    fontWeight: 500,
+    zIndex: 3000,
+    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3)",
+  },
 };
 
 function formatDate(dateStr: string): string {
@@ -219,6 +428,17 @@ export default function OrganizationsPage() {
   const { session, loading: authLoading, loginAdmin } = useAuth();
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Modal state
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [formData, setFormData] = useState<CreateOrgForm>({
+    name: "",
+    contactEmail: "",
+    description: "",
+  });
+  const [formErrors, setFormErrors] = useState<FormErrors>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
 
   const isPlatformAdmin = session?.role === "platform_admin";
 
@@ -284,6 +504,53 @@ export default function OrganizationsPage() {
     if (isPlatformAdmin) fetchOrgs();
   }, [isPlatformAdmin]);
 
+  // Fetch orgs function for refresh
+  const refreshOrgs = useCallback(async () => {
+    try {
+      const { data: orgsData, error } = await supabase
+        .from("organizations")
+        .select("id, name, created_at, contact_email")
+        .order("name", { ascending: true });
+
+      if (error) throw error;
+
+      if (orgsData && orgsData.length > 0) {
+        const orgIds = orgsData.map(o => o.id);
+
+        const [userCounts, deptCounts] = await Promise.all([
+          supabase.from("users").select("org_id").in("org_id", orgIds),
+          supabase.from("departments").select("org_id").in("org_id", orgIds),
+        ]);
+
+        const userCountMap = new Map<string, number>();
+        const deptCountMap = new Map<string, number>();
+
+        (userCounts.data || []).forEach(u => {
+          userCountMap.set(u.org_id, (userCountMap.get(u.org_id) || 0) + 1);
+        });
+
+        (deptCounts.data || []).forEach(d => {
+          deptCountMap.set(d.org_id, (deptCountMap.get(d.org_id) || 0) + 1);
+        });
+
+        const mapped: Organization[] = orgsData.map(org => ({
+          id: org.id,
+          name: org.name,
+          created_at: org.created_at,
+          contact_email: org.contact_email,
+          user_count: userCountMap.get(org.id) || 0,
+          department_count: deptCountMap.get(org.id) || 0,
+        }));
+
+        setOrgs(mapped);
+      } else {
+        setOrgs([]);
+      }
+    } catch (err) {
+      console.error("Error refreshing organizations:", err);
+    }
+  }, []);
+
   const handleManageOrg = (org: Organization) => {
     // Update session to set this org as active context
     loginAdmin({
@@ -297,9 +564,93 @@ export default function OrganizationsPage() {
     router.push("/admin");
   };
 
-  const handleCreateOrg = () => {
-    // TODO: Implement create organization modal/page
-    alert("Create Organization feature coming soon!");
+  // Modal handlers
+  const openCreateModal = () => {
+    setFormData({ name: "", contactEmail: "", description: "" });
+    setFormErrors({});
+    setShowCreateModal(true);
+  };
+
+  const closeCreateModal = () => {
+    setShowCreateModal(false);
+    setFormData({ name: "", contactEmail: "", description: "" });
+    setFormErrors({});
+  };
+
+  const validateForm = (): boolean => {
+    const errors: FormErrors = {};
+
+    // Name validation
+    if (!formData.name.trim()) {
+      errors.name = "Organization name is required";
+    } else if (formData.name.trim().length < 2) {
+      errors.name = "Name must be at least 2 characters";
+    }
+
+    // Email validation
+    if (!formData.contactEmail.trim()) {
+      errors.contactEmail = "Contact email is required";
+    } else {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(formData.contactEmail.trim())) {
+        errors.contactEmail = "Please enter a valid email address";
+      }
+    }
+
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!validateForm()) return;
+
+    setSubmitting(true);
+    setFormErrors({});
+
+    try {
+      const { data, error } = await supabase
+        .from("organizations")
+        .insert({
+          name: formData.name.trim(),
+          contact_email: formData.contactEmail.trim(),
+          description: formData.description.trim() || null,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        // Handle duplicate name error
+        if (error.code === "23505" || error.message.includes("duplicate")) {
+          setFormErrors({ name: "An organization with this name already exists" });
+        } else {
+          setFormErrors({ general: error.message || "Failed to create organization" });
+        }
+        return;
+      }
+
+      // Success
+      closeCreateModal();
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 3000);
+      
+      // Refresh the list
+      await refreshOrgs();
+
+    } catch (err) {
+      setFormErrors({ general: "An unexpected error occurred. Please try again." });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleInputChange = (field: keyof CreateOrgForm, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+    // Clear error when user starts typing
+    if (formErrors[field as keyof FormErrors]) {
+      setFormErrors(prev => ({ ...prev, [field]: undefined }));
+    }
   };
 
   if (authLoading || !session?.isAuthenticated) {
@@ -349,7 +700,7 @@ export default function OrganizationsPage() {
           </p>
         </div>
         <button
-          onClick={handleCreateOrg}
+          onClick={openCreateModal}
           style={s.createBtn}
           onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#2563eb'; }}
           onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#3b82f6'; }}
@@ -362,21 +713,8 @@ export default function OrganizationsPage() {
       {/* Organizations Grid */}
       {loading ? (
         <div style={s.emptyState}>
-          <div style={{
-            width: "40px",
-            height: "40px",
-            border: "3px solid #2a2a2a",
-            borderTopColor: "#3b82f6",
-            borderRadius: "50%",
-            animation: "spin 1s linear infinite",
-            margin: "0 auto",
-          }} />
+          <div className="org-spinner" />
           <p style={{ marginTop: "16px" }}>Loading organizations...</p>
-          <style jsx>{`
-            @keyframes spin {
-              to { transform: rotate(360deg); }
-            }
-          `}</style>
         </div>
       ) : orgs.length === 0 ? (
         <div style={s.emptyState}>
@@ -386,7 +724,7 @@ export default function OrganizationsPage() {
           <h3 style={{ color: "#ffffff", marginBottom: "8px" }}>No organizations yet</h3>
           <p>Create your first organization to get started.</p>
           <button
-            onClick={handleCreateOrg}
+            onClick={openCreateModal}
             style={{ ...s.createBtn, marginTop: "20px" }}
           >
             <PlusIcon />
@@ -452,6 +790,141 @@ export default function OrganizationsPage() {
           ))}
         </div>
       )}
+
+      {/* Create Organization Modal */}
+      {showCreateModal && (
+        <div 
+          style={s.modalOverlay}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeCreateModal();
+          }}
+        >
+          <div style={s.modal} onClick={(e) => e.stopPropagation()}>
+            <div style={s.modalHeader}>
+              <h2 style={s.modalTitle}>Create Organization</h2>
+              <button
+                onClick={closeCreateModal}
+                style={s.closeBtn}
+                onMouseEnter={(e) => { e.currentTarget.style.color = '#ffffff'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = '#666666'; }}
+              >
+                <CloseIcon />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit}>
+              <div style={s.modalBody}>
+                {formErrors.general && (
+                  <div style={s.generalError}>{formErrors.general}</div>
+                )}
+
+                <div style={s.formGroup}>
+                  <label style={s.label}>
+                    Organization Name<span style={s.required}>*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.name}
+                    onChange={(e) => handleInputChange("name", e.target.value)}
+                    placeholder="Enter organization name"
+                    style={{
+                      ...s.input,
+                      ...(formErrors.name ? s.inputError : {}),
+                    }}
+                    onFocus={(e) => { e.currentTarget.style.borderColor = '#3b82f6'; }}
+                    onBlur={(e) => { e.currentTarget.style.borderColor = formErrors.name ? '#ef4444' : '#2a2a2a'; }}
+                    disabled={submitting}
+                  />
+                  {formErrors.name && (
+                    <div style={s.errorText}>{formErrors.name}</div>
+                  )}
+                </div>
+
+                <div style={s.formGroup}>
+                  <label style={s.label}>
+                    Contact Email<span style={s.required}>*</span>
+                  </label>
+                  <input
+                    type="email"
+                    value={formData.contactEmail}
+                    onChange={(e) => handleInputChange("contactEmail", e.target.value)}
+                    placeholder="contact@organization.com"
+                    style={{
+                      ...s.input,
+                      ...(formErrors.contactEmail ? s.inputError : {}),
+                    }}
+                    onFocus={(e) => { e.currentTarget.style.borderColor = '#3b82f6'; }}
+                    onBlur={(e) => { e.currentTarget.style.borderColor = formErrors.contactEmail ? '#ef4444' : '#2a2a2a'; }}
+                    disabled={submitting}
+                  />
+                  {formErrors.contactEmail && (
+                    <div style={s.errorText}>{formErrors.contactEmail}</div>
+                  )}
+                </div>
+
+                <div style={s.formGroup}>
+                  <label style={s.label}>Description</label>
+                  <textarea
+                    value={formData.description}
+                    onChange={(e) => handleInputChange("description", e.target.value)}
+                    placeholder="Brief description of the organization (optional)"
+                    style={s.textarea}
+                    onFocus={(e) => { e.currentTarget.style.borderColor = '#3b82f6'; }}
+                    onBlur={(e) => { e.currentTarget.style.borderColor = '#2a2a2a'; }}
+                    disabled={submitting}
+                  />
+                </div>
+              </div>
+
+              <div style={s.modalFooter}>
+                <button
+                  type="button"
+                  onClick={closeCreateModal}
+                  style={s.cancelBtn}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#444444'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#2a2a2a'; }}
+                  disabled={submitting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  style={{
+                    ...s.submitBtn,
+                    ...(submitting ? s.submitBtnDisabled : {}),
+                  }}
+                  onMouseEnter={(e) => { if (!submitting) e.currentTarget.style.backgroundColor = '#2563eb'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#3b82f6'; }}
+                  disabled={submitting}
+                >
+                  {submitting ? (
+                    <>
+                      <SpinnerIcon />
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <PlusIcon />
+                      Create Organization
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Success Toast */}
+      {showSuccess && (
+        <div style={s.successToast}>
+          <CheckIcon />
+          Organization created successfully!
+        </div>
+      )}
+
+      {/* Global styles for animations */}
+      <style dangerouslySetInnerHTML={{ __html: globalStyles }} />
     </main>
   );
 }
